@@ -1,0 +1,104 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnpm-store/
+
+# Next.js / React build output
+.next/
+out/
+build/
+dist/
+.vercel/
+
+# TypeScript / framework generated files
+*.tsbuildinfo
+next-env.d.ts
+src/generated/
+
+# Prisma generated client
+src/generated/prisma/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local uploads and runtime storage
+storage/
+uploads/
+
+# Local databases and dumps
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.dump
+*.sql.gz
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tests and coverage
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+
+# Tool caches
+.turbo/
+.cache/
+.eslintcache
+.parcel-cache/
+.vite/
+node_modules/.vite/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# Editor and local workspace files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Local certificates and secrets
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+
+# Archives and temporary files
+*.zip
+*.tar
+*.tgz
+*.gz
+*.7z
+*.rar
+*.tmp
+*.temp
+*.bak
+
+# Local AI/Codex workspace metadata
+.agents/
+.ai/
+skills-lock.json

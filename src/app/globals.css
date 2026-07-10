@@ -1,0 +1,226 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * AgendaZap Design System — Visual Foundation
+ * Phase 16 — Visual Identity & Design System Foundation
+ *
+ * Concept: "Agenda física elevada a digital"
+ * Personality: organização, confiança, proximidade, serviço local
+ *
+ * Palette:
+ *   Primary (deep green): actions, buttons, links — confidence & trust
+ *   Brand terracota: accent only (ConfirmationStamp) — brand warmth
+ *   Destructive (true red): errors, deletion, blocking — distinct from brand
+ *   Off-white paper background, mustard for warnings.
+ *
+ * Phase 17 correction: primary swapped from terracota to deep green.
+ * Terracota remains as --brand-terra for controlled accent use only.
+ */
+
+:root {
+  /* ---- Radii ---- */
+  --radius: 0.75rem;
+
+  /* ---- Surface & Text ---- */
+  --background: oklch(0.981 0.004 95);
+  --foreground: oklch(0.18 0.005 70);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.005 70);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.005 70);
+
+  /* ---- Primary: Deep Green (#2B5C4A) — confidence, trust, primary actions ---- */
+  --primary: oklch(0.38 0.08 170);
+  --primary-foreground: oklch(0.985 0 0);
+
+  /* ---- Brand Terracota (D44E2B) — accent only, NOT primary actions ---- */
+  --brand-terra: oklch(0.53 0.19 30);
+  --brand-terra-foreground: oklch(0.985 0 0);
+
+  /* ---- Secondary: Warm stone ---- */
+  --secondary: oklch(0.94 0.012 60);
+  --secondary-foreground: oklch(0.25 0.02 30);
+
+  /* ---- Muted: Paper variation ---- */
+  --muted: oklch(0.96 0.006 85);
+  --muted-foreground: oklch(0.47 0.008 80);
+
+  /* ---- Accent: Green-tinted (hover states for outline/ghost buttons, subtle highlights) ---- */
+  --accent: oklch(0.92 0.04 170);
+  --accent-foreground: oklch(0.35 0.08 170);
+
+  /* ---- Destructive: True red — errors, deletion, blocking ---- */
+  --destructive: oklch(0.5 0.22 25);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  /* ---- Semantic: Success ---- */
+  --success: oklch(0.48 0.12 155);
+  --success-foreground: oklch(0.985 0 0);
+
+  /* ---- Semantic: Warning (mustard F4B84A) ---- */
+  --warning: oklch(0.79 0.14 80);
+  --warning-foreground: oklch(0.25 0.04 80);
+
+  /* ---- Semantic: Info ---- */
+  --info: oklch(0.55 0.1 245);
+  --info-foreground: oklch(0.985 0 0);
+
+  /* ---- Borders & Inputs ---- */
+  --border: oklch(0.91 0.01 95);
+  --input: oklch(0.91 0.01 95);
+  --ring: oklch(0.38 0.08 170);
+
+  /* ---- Shadows: subtle asymmetry (paper-like, not literal) ---- */
+  --shadow-card: 0 1px 2px oklch(0.18 0.005 70 / 4%), 0 2px 6px oklch(0.18 0.005 70 / 5%);
+  --shadow-elevated: 0 2px 4px oklch(0.18 0.005 70 / 4%), 0 4px 12px oklch(0.18 0.005 70 / 6%);
+
+  /* ---- Sidebar: Deep green (2B5C4A) ---- */
+  --sidebar: oklch(0.38 0.08 170);
+  --sidebar-foreground: oklch(0.94 0.01 160);
+  --sidebar-primary: oklch(0.55 0.1 165);
+  --sidebar-primary-foreground: oklch(0.15 0.03 165);
+  --sidebar-accent: oklch(0.32 0.06 170);
+  --sidebar-accent-foreground: oklch(0.95 0.01 160);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.55 0.1 165);
+}
+
+/* ---- Dark mode: skeleton only (not implemented yet) ---- */
+.dark {
+  --background: oklch(0.15 0.01 70);
+  --foreground: oklch(0.94 0.006 90);
+  --card: oklch(0.19 0.008 70);
+  --card-foreground: oklch(0.94 0.006 90);
+  --popover: oklch(0.19 0.008 70);
+  --popover-foreground: oklch(0.94 0.006 90);
+  --primary: oklch(0.45 0.08 170);
+  --primary-foreground: oklch(0.98 0 0);
+  --brand-terra: oklch(0.58 0.18 30);
+  --brand-terra-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.25 0.015 60);
+  --secondary-foreground: oklch(0.94 0.006 90);
+  --muted: oklch(0.23 0.01 85);
+  --muted-foreground: oklch(0.65 0.01 85);
+  --accent: oklch(0.25 0.04 170);
+  --accent-foreground: oklch(0.9 0.02 170);
+  --destructive: oklch(0.45 0.2 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --success: oklch(0.42 0.1 155);
+  --success-foreground: oklch(0.98 0 0);
+  --warning: oklch(0.65 0.12 80);
+  --warning-foreground: oklch(0.98 0 0);
+  --info: oklch(0.48 0.08 245);
+  --info-foreground: oklch(0.98 0 0);
+  --border: oklch(0.28 0.01 90);
+  --input: oklch(0.28 0.01 90);
+  --ring: oklch(0.45 0.08 170);
+  --sidebar: oklch(0.15 0.03 170);
+  --sidebar-foreground: oklch(0.92 0.008 160);
+  --sidebar-primary: oklch(0.55 0.1 165);
+  --sidebar-primary-foreground: oklch(0.12 0.02 165);
+  --sidebar-accent: oklch(0.2 0.04 170);
+  --sidebar-accent-foreground: oklch(0.92 0.008 160);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.55 0.1 165);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-brand-terra: var(--brand-terra);
+  --color-brand-terra-foreground: var(--brand-terra-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Font families — mapped from next/font/google CSS variables */
+  --font-sans: var(--font-sans, Inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-display, Lora), Georgia, ui-serif, serif;
+  --: var(--, "JetBrains Mono"), ui-monospace, monospace;
+}
+
+* {
+  border-color: var(--border);
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.38 0.08 170 / 32%) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: oklch(0.38 0.08 170 / 28%);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(0.38 0.08 170 / 46%);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.agenda-side-panel,
+.agenda-side-panel * {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.agenda-side-panel::-webkit-scrollbar,
+.agenda-side-panel *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}

@@ -1,0 +1,637 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum GlobalRole {
+  SUPER_ADMIN
+  USER
+  CUSTOMER
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELED
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  OPERATOR
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum AuditActorType {
+  SUPER_ADMIN
+  TENANT_USER
+  CUSTOMER
+  SYSTEM
+  TYPEBOT
+}
+
+enum PriceType {
+  FIXED
+  STARTING_AT
+  ON_REQUEST
+  HIDDEN
+}
+
+enum BookingMode {
+  DIRECT
+  REQUIRES_CONFIRMATION
+  INFORMATIONAL
+}
+
+enum CustomFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+}
+
+enum AppointmentOrigin {
+  PUBLIC_LINK
+  WHATSAPP
+  MANUAL_PANEL
+  ADMIN
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  WAITING_INFO
+  RESCHEDULED
+  CANCELED_BY_CUSTOMER
+  CANCELED_BY_PROVIDER
+  NO_SHOW
+  IN_PROGRESS
+  FINISHED
+}
+
+enum OnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum TenantDocumentType {
+  CPF
+  CNPJ
+}
+
+enum FinancialEntryType {
+  REVENUE
+  EXPENSE
+  REFUND
+  ADJUSTMENT
+}
+
+enum FinancialEntryStatus {
+  PAID
+  PENDING
+  OVERDUE
+  CANCELED
+  REFUNDED
+}
+
+enum FinancialPaymentMethod {
+  PIX
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  BANK_TRANSFER
+  OTHER
+}
+
+model User {
+  id             String          @id @default(uuid()) @db.Uuid
+  name           String
+  email          String          @unique
+  phone          String?
+  passwordHash   String          @map("password_hash")
+  globalRole     GlobalRole      @default(USER) @map("global_role")
+  isActive       Boolean         @default(true) @map("is_active")
+  avatarUrl      String?         @map("avatar_url")
+  avatarFileKey  String?         @map("avatar_file_key")
+  lastLoginAt    DateTime?       @map("last_login_at") @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenantUsers    TenantUser[]
+  scheduleBlocks ScheduleBlock[]
+  appointments   Appointment[]
+  customerProfiles Customer[]
+  appointmentReviews AppointmentReview[]
+
+  @@map("users")
+}
+
+model Tenant {
+  id                String             @id @default(uuid()) @db.Uuid
+  name              String
+  slug              String             @unique
+  documentType      TenantDocumentType? @map("document_type")
+  documentNumber    String?            @map("document_number")
+  responsibleName   String             @map("responsible_name")
+  email             String
+  whatsapp          String
+  segment           String
+  city              String
+  state             String             @db.VarChar(2)
+  address           String?
+  publicDisplayName String?            @map("public_display_name")
+  logoUrl           String?            @map("logo_url")
+  logoFileKey       String?            @map("logo_file_key")
+  postalCode        String?            @map("postal_code")
+  neighborhood      String?
+    addressComplement String?            @map("address_complement")
+    googleMapsUrl     String?            @map("google_maps_url")
+    publicLinkActive   Boolean            @default(true) @map("public_link_active")
+    serviceLocation   String             @default("BUSINESS_ADDRESS") @map("service_location")
+  timezone          String             @default("America/Sao_Paulo")
+  locale            String             @default("pt-BR")
+  currency          String             @default("BRL")
+  weekStartsOn      Int                @default(1) @map("week_starts_on")
+  timeFormat        String             @default("24H") @map("time_format")
+  defaultAppointmentDuration Int       @default(30) @map("default_appointment_duration")
+  defaultSlotInterval       Int        @default(30) @map("default_slot_interval")
+  minBookingNoticeMinutes   Int        @default(120) @map("min_booking_notice_minutes")
+  maxBookingAdvanceDays     Int        @default(30) @map("max_booking_advance_days")
+  allowCustomerCancellation Boolean    @default(true) @map("allow_customer_cancellation")
+  allowCustomerRescheduling Boolean    @default(true) @map("allow_customer_rescheduling")
+  cancellationNoticeHours   Int        @default(24) @map("cancellation_notice_hours")
+  confirmationMessageTemplate String   @default("Olá, {cliente}! Seu agendamento de {serviço} foi confirmado para {data} às {hora}.") @map("confirmation_message_template")
+  reminderMessageTemplate      String   @default("Olá, {cliente}! Passando para lembrar do seu agendamento de {serviço} em {data} às {hora}.") @map("reminder_message_template")
+  cancellationMessageTemplate  String   @default("Olá, {cliente}. Seu agendamento de {serviço} em {data} às {hora} foi cancelado.") @map("cancellation_message_template")
+  enableAutomaticReminders     Boolean  @default(false) @map("enable_automatic_reminders")
+  reminderLeadHours            Int      @default(24) @map("reminder_lead_hours")
+  description       String?
+  status            TenantStatus       @default(ACTIVE)
+  onboardingStatus  OnboardingStatus   @default(NOT_STARTED) @map("onboarding_status")
+  onboardingCompletedAt DateTime?      @map("onboarding_completed_at") @db.Timestamptz(3)
+  onboardingSkippedAt   DateTime?      @map("onboarding_skipped_at") @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenantUsers       TenantUser[]
+  subscription      Subscription?
+  auditLogs         AuditLog[]
+  serviceCategories ServiceCategory[]
+  services          Service[]
+  customFields      CustomField[]
+  availabilityRules AvailabilityRule[]
+  scheduleBlocks    ScheduleBlock[]
+  customers         Customer[]
+  appointments      Appointment[]
+  appointmentEvents AppointmentEvent[]
+  typebotSessions     TypebotSession[]
+  typebotCredentials  TypebotCredential[]
+  appointmentReviews   AppointmentReview[]
+  financialEntries     FinancialEntry[]
+  financialPayments    FinancialPayment[]
+  financialSettings    FinancialSettings?
+
+  @@map("tenants")
+}
+
+model TenantUser {
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @map("tenant_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  role      TenantRole
+  isActive  Boolean    @default(true) @map("is_active")
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_users")
+}
+
+model Plan {
+  id                String         @id @default(uuid()) @db.Uuid
+  name              String         @unique
+  description       String?
+  monthlyPrice      Decimal        @map("monthly_price") @db.Decimal(10, 2)
+  annualPrice       Decimal        @map("annual_price") @db.Decimal(10, 2)
+  whatsappEnabled   Boolean        @default(false) @map("whatsapp_enabled")
+  publicLinkEnabled Boolean        @default(false) @map("public_link_enabled")
+  isActive          Boolean        @default(true) @map("is_active")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  subscriptions     Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id            String             @id @default(uuid()) @db.Uuid
+  tenantId      String             @unique @map("tenant_id") @db.Uuid
+  planId        String             @map("plan_id") @db.Uuid
+  status        SubscriptionStatus
+  billingCycle  BillingCycle       @map("billing_cycle")
+  price         Decimal            @db.Decimal(10, 2)
+  startsAt      DateTime           @map("starts_at") @db.Timestamptz(3)
+  expiresAt     DateTime           @map("expires_at") @db.Timestamptz(3)
+  lastPaymentAt DateTime?          @map("last_payment_at") @db.Timestamptz(3)
+  paymentMethod String?            @map("payment_method")
+  internalNotes String?            @map("internal_notes")
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  plan          Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+model AuditLog {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String?        @map("tenant_id") @db.Uuid
+  actorType   AuditActorType @map("actor_type")
+  actorId     String?        @map("actor_id") @db.Uuid
+  eventType   String         @map("event_type")
+  description String
+  metadata    Json?
+  ipAddress   String?        @map("ip_address")
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  tenant      Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([eventType])
+  @@map("audit_logs")
+}
+
+model ServiceCategory {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  position    Int       @default(0)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  services    Service[]
+
+  @@index([tenantId])
+  @@index([tenantId, position])
+  @@map("service_categories")
+}
+
+model Service {
+  id                         String          @id @default(uuid()) @db.Uuid
+  tenantId                   String          @map("tenant_id") @db.Uuid
+  categoryId                 String          @map("category_id") @db.Uuid
+  name                       String
+  description                String?
+  durationMinutes            Int             @map("duration_minutes")
+  priceType                  PriceType       @map("price_type")
+  priceValue                 Decimal?        @map("price_value") @db.Decimal(10, 2)
+  bookingMode                BookingMode     @map("booking_mode")
+  requiresManualConfirmation Boolean         @default(false) @map("requires_manual_confirmation")
+  isActive                   Boolean         @default(true) @map("is_active")
+  position                   Int             @default(0)
+  internalNotes              String?         @map("internal_notes")
+  createdAt                  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant                     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category                   ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  customFields               CustomField[]
+  appointments               Appointment[]
+  financialEntries           FinancialEntry[]
+  financialPayments          FinancialPayment[]
+
+  @@index([tenantId])
+  @@index([categoryId])
+  @@index([tenantId, position])
+  @@map("services")
+}
+
+model CustomField {
+  id         String          @id @default(uuid()) @db.Uuid
+  tenantId   String          @map("tenant_id") @db.Uuid
+  serviceId  String          @map("service_id") @db.Uuid
+  label      String
+  key        String
+  fieldType  CustomFieldType @map("field_type")
+  options    Json?
+  isRequired Boolean         @default(false) @map("is_required")
+  position   Int             @default(0)
+  isActive   Boolean         @default(true) @map("is_active")
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service    Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  customValues AppointmentCustomValue[]
+
+  @@unique([serviceId, key])
+  @@index([tenantId])
+  @@index([serviceId])
+  @@index([serviceId, position])
+  @@map("custom_fields")
+}
+
+model AvailabilityRule {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  weekday             Int
+  startTime           DateTime @map("start_time") @db.Time(0)
+  endTime             DateTime @map("end_time") @db.Time(0)
+  slotIntervalMinutes Int      @map("slot_interval_minutes")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, weekday])
+  @@map("availability_rules")
+}
+
+model ScheduleBlock {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  startsAt        DateTime @map("starts_at") @db.Timestamptz(3)
+  endsAt          DateTime @map("ends_at") @db.Timestamptz(3)
+  reason          String
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User     @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, startsAt])
+  @@index([createdByUserId])
+  @@map("schedule_blocks")
+}
+
+model Customer {
+  id           String        @id @default(uuid()) @db.Uuid
+  tenantId     String        @map("tenant_id") @db.Uuid
+  userId       String?       @map("user_id") @db.Uuid
+  name         String
+  phone        String
+  email        String?
+  notes        String?
+  avatarUrl    String?       @map("avatar_url")
+  avatarFileKey String?      @map("avatar_file_key")
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointments    Appointment[]
+  typebotSessions TypebotSession[]
+  financialEntries FinancialEntry[]
+  financialPayments FinancialPayment[]
+
+  @@index([tenantId])
+  @@index([tenantId, phone])
+  @@index([userId])
+  @@index([tenantId, userId])
+  @@map("customers")
+}
+
+model Appointment {
+  id              String             @id @default(uuid()) @db.Uuid
+  tenantId        String             @map("tenant_id") @db.Uuid
+  customerId      String             @map("customer_id") @db.Uuid
+  serviceId       String             @map("service_id") @db.Uuid
+  origin          AppointmentOrigin
+  status          AppointmentStatus
+  startsAt        DateTime           @map("starts_at") @db.Timestamptz(3)
+  endsAt          DateTime           @map("ends_at") @db.Timestamptz(3)
+  customerNotes   String?            @map("customer_notes")
+  internalNotes   String?            @map("internal_notes")
+  estimatedPrice  Decimal?           @map("estimated_price") @db.Decimal(10, 2)
+  finalPrice      Decimal?           @map("final_price") @db.Decimal(10, 2)
+  createdByUserId String?            @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  service         Service            @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  createdBy       User?              @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  events          AppointmentEvent[]
+  customValues    AppointmentCustomValue[]
+  review          AppointmentReview?
+  financialEntries FinancialEntry[]
+
+  @@index([tenantId])
+  @@index([tenantId, startsAt])
+  @@index([customerId])
+  @@index([serviceId])
+  @@index([status])
+  @@index([origin])
+  @@index([createdByUserId])
+  @@map("appointments")
+}
+
+model AppointmentCustomValue {
+  id            String      @id @default(uuid()) @db.Uuid
+  appointmentId String      @map("appointment_id") @db.Uuid
+  customFieldId String      @map("custom_field_id") @db.Uuid
+  value         String
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  customField   CustomField @relation(fields: [customFieldId], references: [id], onDelete: Restrict)
+
+  @@unique([appointmentId, customFieldId])
+  @@index([appointmentId])
+  @@index([customFieldId])
+  @@map("appointment_custom_values")
+}
+
+model AppointmentReview {
+  id             String      @id @default(uuid()) @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  appointmentId  String      @unique @map("appointment_id") @db.Uuid
+  customerUserId String      @map("customer_user_id") @db.Uuid
+  rating         Int
+  comment        String?
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  customerUser   User        @relation(fields: [customerUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([customerUserId])
+  @@map("appointment_reviews")
+}
+
+model AppointmentEvent {
+  id            String         @id @default(uuid()) @db.Uuid
+  tenantId      String         @map("tenant_id") @db.Uuid
+  appointmentId String         @map("appointment_id") @db.Uuid
+  actorType     AuditActorType @map("actor_type")
+  actorId       String?        @map("actor_id") @db.Uuid
+  eventType     String         @map("event_type")
+  description   String
+  metadata      Json?
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([appointmentId])
+  @@index([tenantId, createdAt])
+  @@map("appointment_events")
+}
+
+model FinancialEntry {
+  id            String                  @id @default(uuid()) @db.Uuid
+  tenantId      String                  @map("tenant_id") @db.Uuid
+  appointmentId String?                 @map("appointment_id") @db.Uuid
+  customerId    String?                 @map("customer_id") @db.Uuid
+  serviceId     String?                 @map("service_id") @db.Uuid
+  type          FinancialEntryType
+  status        FinancialEntryStatus
+  description   String
+  amountInCents Int                     @map("amount_in_cents")
+  entryDate     DateTime                @map("entry_date") @db.Timestamptz(3)
+  dueDate       DateTime?               @map("due_date") @db.Timestamptz(3)
+  paidAt        DateTime?               @map("paid_at") @db.Timestamptz(3)
+  paymentMethod FinancialPaymentMethod? @map("payment_method")
+  category      String?
+  notes         String?
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment   Appointment?            @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  customer      Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  service       Service?                @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  payments      FinancialPayment[]
+
+  @@index([tenantId])
+  @@index([tenantId, entryDate])
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@index([appointmentId])
+  @@index([customerId])
+  @@index([serviceId])
+  @@map("financial_entries")
+}
+
+model FinancialPayment {
+  id             String                 @id @default(uuid()) @db.Uuid
+  tenantId       String                 @map("tenant_id") @db.Uuid
+  entryId        String                 @map("entry_id") @db.Uuid
+  customerId     String?                @map("customer_id") @db.Uuid
+  serviceId      String?                @map("service_id") @db.Uuid
+  amountInCents  Int                    @map("amount_in_cents")
+  paidAt         DateTime               @map("paid_at") @db.Timestamptz(3)
+  paymentMethod  FinancialPaymentMethod @map("payment_method")
+  notes          String?
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  tenant         Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entry          FinancialEntry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  customer       Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  service        Service?               @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([entryId])
+  @@index([tenantId, paidAt])
+  @@index([customerId])
+  @@index([serviceId])
+  @@map("financial_payments")
+}
+
+model FinancialSettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @unique @map("tenant_id") @db.Uuid
+  currency              String   @default("BRL")
+  acceptedMethods       Json     @default("[\"PIX\",\"CASH\",\"CREDIT_CARD\",\"DEBIT_CARD\",\"BANK_TRANSFER\"]") @map("accepted_methods")
+  revenueCategories     Json     @default("[\"Atendimento\",\"Produtos\",\"Ajuste manual\"]") @map("revenue_categories")
+  expenseCategories     Json     @default("[\"Insumos\",\"Comissões\",\"Aluguel\",\"Marketing\",\"Outros\"]") @map("expense_categories")
+  manualControl         Boolean  @default(true) @map("manual_control")
+  payAtLocation         Boolean  @default(true) @map("pay_at_location")
+  requireCheckout       Boolean  @default(false) @map("require_checkout")
+  allowPartialPayments  Boolean  @default(false) @map("allow_partial_payments")
+  defaultDueDays        Int      @default(2) @map("default_due_days")
+  reminderTemplate      String   @default("Olá, {cliente}! Lembrete do pagamento pendente de {valor} referente a {serviço}.") @map("reminder_template")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("financial_settings")
+}
+
+enum TypebotSessionStatus {
+  STARTED
+  IDENTIFIED
+  SELECTING_SERVICE
+  SELECTING_SLOT
+  WAITING_CONFIRMATION
+  APPOINTMENT_CREATED
+  ABANDONED
+}
+
+model TypebotSession {
+  id                  String               @id @default(uuid()) @db.Uuid
+  tenantId            String               @map("tenant_id") @db.Uuid
+  customerId          String?              @map("customer_id") @db.Uuid
+  phone               String
+  customerName        String?              @map("customer_name")
+  lastServiceId       String?              @map("last_service_id") @db.Uuid
+  lastAppointmentId   String?              @map("last_appointment_id") @db.Uuid
+  status              TypebotSessionStatus @default(STARTED)
+  metadata            Json?
+  lastInteractionAt   DateTime             @default(now()) @map("last_interaction_at") @db.Timestamptz(3)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([phone])
+  @@index([tenantId, phone])
+  @@index([customerId])
+  @@index([lastInteractionAt])
+  @@map("typebot_sessions")
+}
+
+model TypebotCredential {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  name        String
+  tokenHash   String    @map("token_hash")
+  tokenPrefix String    @map("token_prefix")
+  isActive    Boolean   @default(true) @map("is_active")
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tokenPrefix])
+  @@map("typebot_credentials")
+}
