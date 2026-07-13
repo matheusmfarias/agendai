@@ -62,6 +62,17 @@ Qualquer linha retornada — migration aplicada, falha ou marcada como rolled ba
 forward-only específica para o ambiente. Não use `prisma migrate resolve`,
 `prisma migrate reset` nem edite manualmente o ledger `_prisma_migrations`.
 
+## Audiência e leitura de notificações do prestador
+
+`ProviderNotification` diferencia broadcast do tenant (`TENANT`) de entrega
+privada (`USER`). A entrega privada referencia a membership composta
+`(tenantId, userId)`, e `dedupeKey` é única dentro do tenant. Leituras são
+receipts em `ProviderNotificationRead`, também vinculadas por chaves compostas
+ao tenant, notificação e membership. A remoção da membership apaga em cascata
+notificações privadas e receipts, sem converter acidentalmente uma entrega
+privada em broadcast. O `readAt` da notificação permanece apenas para
+compatibilidade com registros legados.
+
 Prisma ORM será usado para acesso type-safe ao PostgreSQL. A documentação oficial do Prisma descreve suporte ao conector PostgreSQL e uso do Prisma ORM em aplicações TypeScript/Node.js.
 
 ---

@@ -700,7 +700,6 @@ export async function changeAppointmentStatus(
         metadata,
       ),
     });
-    let notification: CreateProviderNotificationInput | null = null;
     if (status === "FINISHED") {
       const payment = await tx.financialEntry.findFirst({
         where: {
@@ -715,8 +714,9 @@ export async function changeAppointmentStatus(
           appointment.startsAt,
           current.tenant.timezone,
         );
-        notification = {
+        const notification: CreateProviderNotificationInput = {
           tenantId: actor.tenantId,
+          audience: "TENANT",
           type: "payment_pending",
           priority: "medium",
           title: "Pagamento pendente",
@@ -732,25 +732,13 @@ export async function changeAppointmentStatus(
             source: "manual",
           },
         };
+        await createProviderNotification(notification, tx);
       }
     }
 
-    return { appointment, notification };
+    return appointment;
   });
-
-  if (result.notification) {
-    try {
-      await createProviderNotification(result.notification);
-    } catch (error) {
-      console.error("Failed to create payment pending notification.", {
-        appointmentId: result.appointment.id,
-        tenantId: result.notification.tenantId,
-        errorName: error instanceof Error ? error.name : "UnknownError",
-      });
-    }
-  }
-
-  return result.appointment;
+  return result;
 }
 
 export async function checkoutAppointment(

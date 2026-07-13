@@ -123,6 +123,11 @@ enum FinancialPaymentMethod {
   OTHER
 }
 
+enum ProviderNotificationAudience {
+  TENANT
+  USER
+}
+
 model User {
   id             String          @id @default(uuid()) @db.Uuid
   name           String
@@ -142,7 +147,6 @@ model User {
   ownedAppointments   Appointment[] @relation("AppointmentCustomerOwner")
   customerProfiles Customer[]
   appointmentReviews AppointmentReview[]
-  providerNotifications ProviderNotification[]
   providerNotificationPreferences ProviderNotificationPreference[]
 
   @@map("users")
@@ -228,6 +232,8 @@ model TenantUser {
   updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  privateProviderNotifications ProviderNotification[]
+  providerNotificationReads    ProviderNotificationRead[]
 
   @@unique([tenantId, userId])
   @@index([tenantId])
@@ -517,7 +523,9 @@ model AppointmentEvent {
 model ProviderNotification {
   id              String    @id @default(uuid()) @db.Uuid
   tenantId        String    @map("tenant_id") @db.Uuid
+  audience            ProviderNotificationAudience @default(TENANT)
   recipientUserId String?   @map("recipient_user_id") @db.Uuid
+  dedupeKey           String                       @map("dedupe_key")
   type            String
   priority        String    @default("medium")
   title           String
@@ -531,14 +539,30 @@ model ProviderNotification {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  recipientUser   User?     @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
+  recipientMembership TenantUser?                  @relation(fields: [tenantId, recipientUserId], references: [tenantId, userId], onDelete: Cascade, map: "provider_notifications_recipient_membership_fkey")
+  reads               ProviderNotificationRead[]
 
+  @@unique([id, tenantId])
+  @@unique([tenantId, dedupeKey])
   @@index([tenantId, createdAt])
-  @@index([tenantId, readAt])
   @@index([tenantId, type])
-  @@index([recipientUserId])
-  @@unique([tenantId, type, entityId])
+  @@index([tenantId, recipientUserId])
+  @@index([tenantId, readAt], map: "provider_notifications_tenant_id_read_at_idx")
   @@map("provider_notifications")
+}
+
+model ProviderNotificationRead {
+  id             String               @id @default(uuid()) @db.Uuid
+  notificationId String               @map("notification_id") @db.Uuid
+  tenantId       String               @map("tenant_id") @db.Uuid
+  userId         String               @map("user_id") @db.Uuid
+  readAt         DateTime             @default(now()) @map("read_at") @db.Timestamptz(3)
+  notification   ProviderNotification @relation(fields: [notificationId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "provider_notification_reads_notification_tenant_fkey")
+  membership     TenantUser           @relation(fields: [tenantId, userId], references: [tenantId, userId], onDelete: Cascade, map: "provider_notification_reads_membership_fkey")
+
+  @@unique([notificationId, tenantId, userId], map: "provider_notification_reads_notification_tenant_user_key")
+  @@index([tenantId, userId, readAt], map: "provider_notification_reads_tenant_user_read_at_idx")
+  @@map("provider_notification_reads")
 }
 
 model ProviderNotificationPreference {

@@ -250,6 +250,33 @@ describe("appointment service tenant isolation", () => {
     });
   });
 
+  it("persists payment_pending in the FINISHED transaction and propagates failure", async () => {
+    txMock.appointment.findFirst.mockResolvedValue({
+      ...currentAppointment(),
+      status: "IN_PROGRESS",
+      customer: { name: "Cliente A" },
+      service: { name: "Serviço A" },
+      tenant: { timezone: "America/Sao_Paulo" },
+    });
+    txMock.financialEntry.findFirst.mockResolvedValue(null);
+    txMock.appointmentEvent.create.mockResolvedValue({ id: "event-a" });
+    txMock.auditLog.create.mockResolvedValue({ id: "audit-a" });
+    createProviderNotificationMock.mockRejectedValueOnce(new Error("notification write failed"));
+
+    await expect(
+      changeAppointmentStatus(ids.appointmentB, "FINISHED", 100, actor),
+    ).rejects.toThrow("notification write failed");
+
+    expect(createProviderNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: ids.tenantA,
+        type: "payment_pending",
+        entityId: ids.appointmentB,
+      }),
+      txMock,
+    );
+  });
+
   it("rejects a tenant B service during creation with no effects", async () => {
     txMock.customer.findFirst.mockResolvedValue(validCustomer());
     txMock.service.findFirst.mockResolvedValue(null);

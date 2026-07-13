@@ -42,6 +42,9 @@ export type ProviderNotificationMetadata = {
   requiresConfirmation?: boolean;
 };
 
+export type ProviderNotificationAudience = "TENANT" | "USER";
+export type ProviderNotificationCategory = "bookings" | "financial" | "system";
+
 export type ProviderNotificationPreferences = {
   panelNotificationsEnabled: boolean;
   soundEnabled: boolean;
@@ -64,6 +67,7 @@ export type ProviderNotification = {
   id: string;
   tenantId: string;
   recipientUserId: string | null;
+  audience: ProviderNotificationAudience;
   type: ProviderNotificationType;
   priority: ProviderNotificationPriority;
   title: string;

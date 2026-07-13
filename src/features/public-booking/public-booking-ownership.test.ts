@@ -30,7 +30,9 @@ vi.mock("@/features/booking-core/availability", () => ({
   assertAvailability: vi.fn(),
   assertNoSlotConflict: vi.fn(),
   getAvailableSlots: vi.fn(),
-  publicStatusForBookingMode: vi.fn(() => "CONFIRMED"),
+  publicStatusForBookingMode: vi.fn((mode: string) =>
+    mode === "REQUIRES_CONFIRMATION" ? "REQUESTED" : "CONFIRMED",
+  ),
 }));
 vi.mock("@/features/booking-core/custom-fields", async () => {
   const actual = await vi.importActual<
@@ -116,6 +118,72 @@ describe("public booking ownership", () => {
         customerUser: { connect: { id: "owner-a" } },
       }),
     });
+    expect(createProviderNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: "tenant-a-id",
+        type: "public_booking_created",
+        entityId: "appointment-a",
+      }),
+      txMock,
+    );
+  });
+
+  it("persists a confirmation-required notification in the booking transaction", async () => {
+    txMock.service.findFirst.mockResolvedValue({
+      id: input.serviceId,
+      name: "Consulta",
+      durationMinutes: 60,
+      priceValue: null,
+      bookingMode: "REQUIRES_CONFIRMATION",
+      category: { name: "Geral" },
+      customFields: [],
+    });
+    txMock.customer.findFirst.mockResolvedValueOnce({
+      id: "owned-customer",
+      name: "Cliente Atual",
+      userId: "owner-a",
+    });
+    txMock.customer.update.mockResolvedValue({
+      id: "owned-customer",
+      name: "Cliente Atual",
+      userId: "owner-a",
+    });
+
+    await createPublicBooking(input, "owner-a");
+
+    expect(createProviderNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: "tenant-a-id",
+        type: "booking_confirmation_required",
+        priority: "high",
+        entityId: "appointment-a",
+      }),
+      txMock,
+    );
+  });
+
+  it("aborts the booking transaction when its durable notification fails", async () => {
+    txMock.customer.findFirst.mockResolvedValueOnce({
+      id: "owned-customer",
+      name: "Cliente Atual",
+      userId: "owner-a",
+    });
+    txMock.customer.update.mockResolvedValue({
+      id: "owned-customer",
+      name: "Cliente Atual",
+      userId: "owner-a",
+    });
+    createProviderNotificationMock.mockRejectedValueOnce(
+      new Error("notification write failed"),
+    );
+
+    await expect(createPublicBooking(input, "owner-a")).rejects.toThrow(
+      "notification write failed",
+    );
+    expect(createProviderNotificationMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      txMock,
+    );
   });
 
   it("does not select or overwrite a Customer linked to another user", async () => {

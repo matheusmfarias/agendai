@@ -403,7 +403,6 @@ export async function createPublicBooking(
         },
       });
 
-      let notification: CreateProviderNotificationInput | null = null;
       if (status === "CONFIRMED" || status === "REQUESTED") {
         const { date: bookingDate, time: bookingTime } = notificationDateParts(
           startsAt,
@@ -417,8 +416,9 @@ export async function createPublicBooking(
           ? `${customer.name} solicitou ${service.name} para ${bookingDate} às ${bookingTime}.`
           : `${customer.name} agendou ${service.name} para ${bookingDate} às ${bookingTime}.`;
 
-        notification = {
+        const notification: CreateProviderNotificationInput = {
           tenantId: tenant.id,
+          audience: "TENANT",
           type: requiresConfirmation
             ? "booking_confirmation_required"
             : "public_booking_created",
@@ -437,6 +437,7 @@ export async function createPublicBooking(
             requiresConfirmation,
           },
         };
+        await createProviderNotification(notification, tx);
       }
 
       if (customValues.rows.length) {
@@ -500,24 +501,10 @@ export async function createPublicBooking(
         appointmentId: appointment.id,
         status,
         message: PUBLIC_BOOKING_MESSAGES[service.bookingMode],
-        notification,
       };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
-
-  if (result.notification) {
-    try {
-      await createProviderNotification(result.notification);
-    } catch (error) {
-      console.error("Failed to create provider notification.", {
-        appointmentId: result.appointmentId,
-        tenantId: result.notification.tenantId,
-        type: result.notification.type,
-        errorName: error instanceof Error ? error.name : "UnknownError",
-      });
-    }
-  }
 
   return {
     appointmentId: result.appointmentId,
