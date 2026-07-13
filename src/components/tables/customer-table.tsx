@@ -16,6 +16,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  ContentGrid,
+  MetricCard as ModuleMetricCard,
+  ModuleToolbar,
+} from "@/components/layout/module-page";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import {
@@ -158,21 +163,7 @@ function MetricCard({
   label: string;
   value: string | number;
 }) {
-  return (
-    <Card className="py-2.5">
-      <CardContent className="flex items-center gap-3 px-3">
-        <span className="grid size-9 place-items-center rounded-full bg-primary/10 text-primary">
-          <Icon className="size-4" />
-        </span>
-        <div>
-          <p className="text-xl font-semibold leading-tight tracking-tight">
-            {value}
-          </p>
-          <p className="text-xs text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  return <ModuleMetricCard label={label} value={value} icon={<Icon className="size-4" />} tone="primary" />;
 }
 
 export function CustomerTable({
@@ -226,9 +217,9 @@ export function CustomerTable({
         />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <ContentGrid>
         <Card className="overflow-hidden py-0">
-          <div className="space-y-3 border-b border-border bg-muted/20 p-3">
+          <ModuleToolbar className="space-y-3 rounded-none border-x-0 border-t-0 shadow-none">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -271,7 +262,7 @@ export function CustomerTable({
                 <option value="lastVisit">Última visita</option>
               </Select>
             </div>
-          </div>
+          </ModuleToolbar>
           <CardContent className="space-y-2.5 p-3">
             {filtered.length ? (
               filtered.map((row) => (
@@ -358,7 +349,7 @@ export function CustomerTable({
             )}
           </CardContent>
         </Card>
-      </div>
+      </ContentGrid>
     </div>
   );
 }

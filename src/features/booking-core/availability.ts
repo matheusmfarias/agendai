@@ -181,12 +181,12 @@ export async function assertNoSlotConflict(
 
   if (conflict) {
     throw new Error(
-      "Este horario acabou de ser ocupado. Escolha outro horario.",
+      "Este horário acabou de ser ocupado. Escolha outro horário.",
     );
   }
 
   if (block) {
-    throw new Error("Este horario esta bloqueado. Escolha outro horario.");
+    throw new Error("Este horário está bloqueado. Escolha outro horário.");
   }
 }
 
@@ -205,7 +205,7 @@ export async function assertAvailability(
     },
   });
   if (!tenant) {
-    throw new Error("Prestador nao encontrado.");
+    throw new Error("Prestador não encontrado.");
   }
 
   const timezone = normalizeBookingTimezone(tenant.timezone);
@@ -214,7 +214,7 @@ export async function assertAvailability(
   );
   if (startsAt < earliestStart) {
     throw new Error(
-      "Este horario nao respeita a antecedencia minima para agendamento.",
+      "Este horário não respeita a antecedência mínima para agendamento.",
     );
   }
 
@@ -222,7 +222,7 @@ export async function assertAvailability(
   const maxDate = addDaysToDateString(today, tenant.maxBookingAdvanceDays);
   const latestStartExclusive = dateAtMinutesInTimezone(maxDate, 0, timezone);
   if (startsAt >= latestStartExclusive) {
-    throw new Error("Este horario esta fora do periodo liberado da agenda.");
+    throw new Error("Este horário está fora do período liberado da agenda.");
   }
 
   const rules = await tx.availabilityRule.findMany({
@@ -242,7 +242,7 @@ export async function assertAvailability(
   }));
 
   if (!isWithinRecurringAvailability(startsAt, endsAt, intervals, timezone)) {
-    throw new Error("Selecione um horario disponivel.");
+    throw new Error("Selecione um horário disponível.");
   }
 
   const start = getPartsInTimezone(startsAt, timezone);
@@ -254,6 +254,6 @@ export async function assertAvailability(
   );
 
   if (!aligned) {
-    throw new Error("Selecione um horario disponivel.");
+    throw new Error("Selecione um horário disponível.");
   }
 }

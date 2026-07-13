@@ -1,5 +1,6 @@
 import { MapPin } from "lucide-react";
 
+import { AgendaiSymbol } from "@/components/brand/agendai-symbol";
 import { formatPublicAddress } from "@/features/public-booking/public-address";
 
 interface PublicFooterProps {
@@ -31,7 +32,11 @@ export function PublicFooter({ tenant }: PublicFooterProps) {
           ) : null}
         </div>
 
-        <p className="text-xs">Agendamento online via AgendaZap</p>
+        <div className="inline-flex items-center gap-1.5 text-xs">
+          <span>Powered by</span>
+          <AgendaiSymbol size={16} className="text-primary" />
+          <span className="font-semibold text-foreground">Agendaí</span>
+        </div>
       </div>
     </footer>
   );

@@ -1,0 +1,15 @@
+<svg width="180" height="178" viewBox="0 0 180 178" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agendaí">
+  <defs>
+    <linearGradient id="agendai-stacked-gradient" x1="50" y1="92" x2="125" y2="17" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D4ED8"/>
+      <stop offset="0.52" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(42 4)">
+    <path d="M17 75.5L39.7 19.8C42.1 13.9 50.4 13.9 52.9 19.7L70.4 60.8" stroke="url(#agendai-stacked-gradient)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M34.7 54.2L45.5 65L75.8 34.8" stroke="url(#agendai-stacked-gradient)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M28.6 66.7H56.5" stroke="url(#agendai-stacked-gradient)" stroke-width="10" stroke-linecap="round"/>
+  </g>
+  <text x="90" y="151" text-anchor="middle" fill="#0F172A" font-family="Poppins, Inter, Arial, sans-serif" font-size="38" font-weight="700" letter-spacing="-1">Agendaí</text>
+</svg>

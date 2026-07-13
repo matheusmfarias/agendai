@@ -14,6 +14,12 @@ import { ProviderStatusForm } from "@/components/forms/provider-status-form";
 import { ServiceCategoryForm } from "@/components/forms/service-category-form";
 import { ServiceForm } from "@/components/forms/service-form";
 import { PanelShell } from "@/components/layout/panel-shell";
+import {
+  MetricCard as ModuleMetricCard,
+  ModulePage,
+  ModuleToolbar,
+} from "@/components/layout/module-page";
+import { PageHeading } from "@/components/layout/page-heading";
 import { SuccessAlert } from "@/components/layout/success-alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -213,14 +219,7 @@ function MetricChip({
   value: number | string;
   label: string;
 }) {
-  return (
-    <div className="rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm">
-      <span className="block text-2xl font-semibold leading-none tracking-tight">
-        {value}
-      </span>
-      <span className="mt-1 block text-sm text-muted-foreground">{label}</span>
-    </div>
-  );
+  return <ModuleMetricCard label={label} value={value} />;
 }
 
 function CategoryButton({
@@ -635,24 +634,17 @@ export function ProviderServicesView({
   const hasServices = rows.length > 0;
 
   return (
-    <>
-      <div className="mb-5 space-y-4">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Catálogo de serviços
-            </h1>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Gerencie os serviços, categorias, preços e informações solicitadas antes do agendamento.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {categories.length ? (
+    <ModulePage>
+      <div className="space-y-4">
+        <PageHeading
+          title="Catálogo de serviços"
+          description="Gerencie os serviços, categorias, preços e informações solicitadas antes do agendamento."
+          actions={categories.length ? (
             <Button type="button" onClick={() => navigate(serviceHref({ panel: categories.length ? "new" : "category" }))}>
               <Plus className="size-4" />
               Novo serviço
             </Button>
-            ) : (
+          ) : (
               <Button
                 type="button"
                 onClick={() => navigate(serviceHref({ panel: "category" }))}
@@ -660,9 +652,8 @@ export function ProviderServicesView({
                 <Plus className="size-4" />
                 Nova categoria
               </Button>
-            )}
-          </div>
-        </div>
+          )}
+        />
 
         <div className="hidden">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -774,7 +765,7 @@ export function ProviderServicesView({
             </div>
 
             <Card className="flex flex-col overflow-hidden border-border/70 bg-card/95 py-0 shadow-sm xl:h-[calc(100dvh-15.5rem)] xl:min-h-[32rem]">
-              <div className="shrink-0 border-b border-border/70 bg-card/95 px-4 py-4 shadow-sm">
+              <ModuleToolbar className="shrink-0 rounded-none border-x-0 border-t-0 shadow-none">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h2 className="font-semibold">{activeCategoryName}</h2>
@@ -807,7 +798,7 @@ export function ProviderServicesView({
                   />
                 </div>
                 ) : null}
-              </div>
+              </ModuleToolbar>
 
               <CardContent className="grid content-start gap-3 overflow-y-auto p-3 sm:p-4 md:grid-cols-2 xl:min-h-0 xl:flex-1">
                 {filtered.length ? (
@@ -850,13 +841,13 @@ export function ProviderServicesView({
                       icon="boxes"
                       title={
                         justCreatedCategory
-                          ? "Categoria pronta para receber servicos"
-                          : "Nenhum servico cadastrado"
+                          ? "Categoria pronta para receber serviços"
+                          : "Nenhum serviço cadastrado"
                       }
                       description={
                         justCreatedCategory
-                          ? "Agora cadastre o primeiro servico desta categoria para que clientes possam encontrar horarios no link publico."
-                          : "Crie seu primeiro servico para comecar a receber agendamentos pelo link publico."
+                          ? "Agora cadastre o primeiro serviço desta categoria para que clientes possam encontrar horários no link público."
+                          : "Crie seu primeiro serviço para começar a receber agendamentos pelo link público."
                       }
                       action={
                         <Button
@@ -864,7 +855,7 @@ export function ProviderServicesView({
                           onClick={() => navigate(serviceHref({ panel: "new" }))}
                         >
                           <Plus className="size-4" />
-                          Criar primeiro servico
+                          Criar primeiro serviço
                         </Button>
                       }
                     />
@@ -878,7 +869,7 @@ export function ProviderServicesView({
         <EmptyState
           icon="boxes"
           title="Nenhuma categoria cadastrada"
-          description="Crie uma categoria para organizar seus servicos. Depois disso, voce podera cadastrar o primeiro servico."
+          description="Crie uma categoria para organizar seus serviços. Depois disso, você poderá cadastrar o primeiro serviço."
           action={
             <Button
               type="button"
@@ -1009,6 +1000,6 @@ export function ProviderServicesView({
           />
         </PanelShell>
       ) : null}
-    </>
+    </ModulePage>
   );
 }

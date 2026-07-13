@@ -82,7 +82,7 @@ export default async function LoginPage({
       mobileBrand={<AuthMobileBrand />}
     >
       <AuthCard
-        title="Entrar no AgendaZap"
+        title="Entrar no Agendaí"
         description="Acesse sua área para administrar agendas, serviços e atendimentos."
       >
         <LoginForm />

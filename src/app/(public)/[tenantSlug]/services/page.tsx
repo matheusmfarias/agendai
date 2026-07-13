@@ -68,7 +68,7 @@ export default async function TenantServicesPage({
               tenantSlug={tenant.slug}
             />
           ) : (
-            <div className="rounded-3xl border border-dashed border-border bg-card px-6 py-10 text-center">
+            <div className="rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center">
               <p className="text-muted-foreground">
                 Nenhum serviço disponível no momento.
               </p>

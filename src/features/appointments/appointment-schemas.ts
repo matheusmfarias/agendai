@@ -11,14 +11,14 @@ const dateTimeInputSchema = z
   .string()
   .regex(
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
-    "Informe uma data e hora validas.",
+    "Informe uma data e hora válidas.",
   )
   .transform((value, context) => {
     const date = new Date(`${value}:00-03:00`);
     if (Number.isNaN(date.getTime())) {
       context.addIssue({
         code: "custom",
-        message: "Informe uma data e hora validas.",
+        message: "Informe uma data e hora válidas.",
       });
       return z.NEVER;
     }
@@ -29,7 +29,7 @@ const optionalMoneySchema = z.preprocess(
   (value) => (value === "" || value === null ? undefined : value),
   z.preprocess(
     parseBrazilianDecimal,
-    z.number().min(0, "O valor nao pode ser negativo."),
+    z.number().min(0, "O valor não pode ser negativo."),
   ).optional(),
 );
 
@@ -52,8 +52,8 @@ const extraServiceIdsSchema = z
   .default([]);
 
 const appointmentBaseSchema = z.object({
-  customerId: z.string().uuid("Selecione um cliente valido."),
-  serviceId: z.string().uuid("Selecione um servico valido."),
+  customerId: z.string().uuid("Selecione um cliente válido."),
+  serviceId: z.string().uuid("Selecione um serviço válido."),
   startsAt: dateTimeInputSchema,
   customerNotes: z.string().trim().max(2000).optional(),
   internalNotes: z.string().trim().max(2000).optional(),
@@ -70,7 +70,7 @@ export const createAppointmentSchema = appointmentBaseSchema.extend({
 });
 
 export const updateAppointmentSchema = appointmentBaseSchema.extend({
-  id: z.string().uuid("Agendamento invalido."),
+  id: z.string().uuid("Agendamento inválido."),
   status: z
     .enum([
       "REQUESTED",
@@ -88,7 +88,7 @@ export const updateAppointmentSchema = appointmentBaseSchema.extend({
 });
 
 export const changeAppointmentStatusSchema = z.object({
-  id: z.string().uuid("Agendamento invalido."),
+  id: z.string().uuid("Agendamento inválido."),
   status: z.enum([
     "REQUESTED",
     "CONFIRMED",
@@ -104,7 +104,7 @@ export const changeAppointmentStatusSchema = z.object({
 });
 
 export const checkoutAppointmentSchema = z.object({
-  id: z.string().uuid("Agendamento invalido."),
+  id: z.string().uuid("Agendamento inválido."),
   paymentMethod: z
     .enum(["CASH", "PIX", "CREDIT_CARD", "DEBIT_CARD", "BANK_TRANSFER", "OTHER"])
     .default("CASH"),
@@ -114,11 +114,11 @@ export const checkoutAppointmentSchema = z.object({
   ),
   tip: z.preprocess(
     parseBrazilianDecimal,
-    z.number().min(0, "A gorjeta nao pode ser negativa."),
+    z.number().min(0, "A gorjeta não pode ser negativa."),
   ).default(0),
   discount: z.preprocess(
     parseBrazilianDecimal,
-    z.number().min(0, "O desconto nao pode ser negativo."),
+    z.number().min(0, "O desconto não pode ser negativo."),
   ).default(0),
 });
 

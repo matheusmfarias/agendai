@@ -45,7 +45,7 @@ export function ServiceCard({
   return (
     <Link
       href={`/${tenantSlug}/book?serviceId=${service.id}`}
-      className={`group grid grid-cols-[1fr_auto] items-center gap-3 p-4 transition-colors hover:bg-muted/35 active:bg-muted/50 ${
+      className={`group grid grid-cols-[1fr_auto] items-center gap-3 p-4 transition-colors hover:bg-muted/35 active:bg-muted/50 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 ${
         divided ? "border-t border-border" : ""
       }`}
     >

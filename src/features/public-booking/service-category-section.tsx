@@ -36,7 +36,7 @@ export function ServiceCategorySection({
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
         {category.services.map((service, index) => (
           <ServiceCard
             key={service.id}

@@ -330,55 +330,54 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
         disabled={disabled}
         readOnly
       />
-      <button
-        id={id}
-        type="button"
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onBlur={() => {
-          onBlur?.({
-            target: { name, value: currentValue },
-            currentTarget: { name, value: currentValue },
-          } as React.FocusEvent<HTMLSelectElement>);
-        }}
-        onClick={() => setOpen((current) => !current)}
+      <span
         className={cn(
-          "flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-input bg-background px-3 py-2 text-left text-sm text-foreground shadow-sm outline-none transition-colors hover:border-primary/30 focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:bg-muted/50 disabled:opacity-50",
+          "flex h-11 w-full items-center rounded-xl border border-input bg-background text-sm text-foreground shadow-sm transition-colors hover:border-primary/30 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-ring/20 has-[:disabled]:cursor-not-allowed has-[:disabled]:bg-muted/50 has-[:disabled]:opacity-50",
           className,
         )}
       >
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate",
-            !hasValue && "text-muted-foreground",
-          )}
+        <button
+          id={id}
+          type="button"
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onBlur={() => {
+            onBlur?.({
+              target: { name, value: currentValue },
+              currentTarget: { name, value: currentValue },
+            } as React.FocusEvent<HTMLSelectElement>);
+          }}
+          onClick={() => setOpen((current) => !current)}
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left outline-none disabled:cursor-not-allowed"
         >
-          {selectedOption?.label ?? "Selecione"}
-        </span>
-        <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-          {hasValue && !required ? (
-            <span
-              role="button"
-              tabIndex={-1}
-              aria-label="Limpar seleção"
-              className="rounded-full p-0.5 hover:bg-muted hover:text-foreground"
-              onClick={(event) => {
-                event.stopPropagation();
-                emitChange("");
-              }}
-            >
-              <X className="size-4" />
-            </span>
-          ) : null}
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              !hasValue && "text-muted-foreground",
+            )}
+          >
+            {selectedOption?.label ?? "Selecione"}
+          </span>
           <ChevronDown
             className={cn(
-              "size-4 transition-transform",
+              "size-4 shrink-0 text-muted-foreground transition-transform",
               open && "rotate-180",
             )}
           />
-        </span>
-      </button>
+        </button>
+        {hasValue && !required ? (
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label="Limpar seleção"
+            className="mr-2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            onClick={() => emitChange("")}
+          >
+            <X className="size-4" />
+          </button>
+        ) : null}
+      </span>
 
       {dropdownStrategy === "fixed" && mounted
         ? createPortal(dropdown, document.body)

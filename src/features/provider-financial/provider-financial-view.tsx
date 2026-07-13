@@ -16,12 +16,13 @@ import {
   Settings,
   SlidersHorizontal,
   WalletCards,
-  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ModulePage, ModuleTabs, ModuleToolbar } from "@/components/layout/module-page";
+import { PanelShell } from "@/components/layout/panel-shell";
 import { FieldError, FormFeedback } from "@/components/forms/form-feedback";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -197,7 +198,7 @@ export function ProviderFinancialView({
   }, [filters, pathname, router]);
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-4">
+    <ModulePage>
       <FinancialHeader
         activeTab={activeTab}
         onAdd={() => setAddOpen(true)}
@@ -322,7 +323,7 @@ export function ProviderFinancialView({
           onClose={() => setFiltersOpen(false)}
         />
       ) : null}
-    </div>
+    </ModulePage>
   );
 }
 
@@ -365,7 +366,7 @@ function FinancialHeader({
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:justify-end">
           <Button type="button" onClick={onAdd}>
             <Plus className="size-4" />
-            Adicionar lançamento
+            Novo lançamento
           </Button>
           {activeTab !== "settings" ? (
             <Button variant="outline" asChild>
@@ -382,7 +383,6 @@ function FinancialHeader({
             aria-pressed={activeTab === "settings"}
           >
             <Settings className="size-4" />
-            Configurar
           </Button>
         </div>
       </div>
@@ -398,12 +398,7 @@ function FinancialTabs({
   onChange: (tab: FinancialTab) => void;
 }) {
   return (
-    <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-      <div
-        role="tablist"
-        aria-label="Seções do financeiro"
-        className="inline-flex min-w-max rounded-xl border border-border bg-card p-1 shadow-sm"
-      >
+    <ModuleTabs label="Seções do financeiro">
         {TABS.map((tab) => (
           <button
             key={tab.value}
@@ -421,8 +416,7 @@ function FinancialTabs({
             {tab.label}
           </button>
         ))}
-      </div>
-    </div>
+    </ModuleTabs>
   );
 }
 
@@ -448,7 +442,7 @@ function FinancialFiltersBar({
   const showAdvanced = activeTab === "summary" || activeTab === "transactions" || activeTab === "pending";
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border bg-card p-3 shadow-sm">
+    <ModuleToolbar className="space-y-3">
       <div className="flex gap-2 overflow-x-auto pb-1">
         {(Object.keys(PERIOD_LABELS) as FinancialPeriodKey[]).map((period) => (
           <button
@@ -637,7 +631,7 @@ function FinancialFiltersBar({
           </Select>
         </div>
       </div>
-    </div>
+    </ModuleToolbar>
   );
 }
 
@@ -666,9 +660,23 @@ function SummaryTab({
     <div className="space-y-4">
       <PrimaryMetrics data={data} />
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <CashFlowCard data={data} />
-        <div className="space-y-4">
+      <div className="grid items-start gap-3 xl:grid-cols-4">
+        <div className="space-y-4 xl:col-span-3">
+          <CashFlowCard data={data} />
+          <TransactionsSection
+            title="Últimos lançamentos"
+            description="Movimentações recentes do período filtrado."
+            entries={latestEntries}
+            noResults={noResults}
+            onClearFilters={onClearFilters}
+            onSelectEntry={onSelectEntry}
+            compact
+            actionLabel="Ver todos"
+            onAction={onOpenTransactions}
+          />
+        </div>
+
+        <aside className="space-y-4 xl:col-span-1">
           <PendingPayments
             entries={data.pendingPayments.slice(0, 3)}
             compact
@@ -678,23 +686,9 @@ function SummaryTab({
             onAction={onOpenPending}
           />
           <PaymentMethods data={data} />
+          <SecondaryMetrics data={data} />
           <RecommendedActions data={data} onOpenPending={onOpenPending} />
-        </div>
-      </div>
-
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <TransactionsSection
-          title="Últimos lançamentos"
-          description="Movimentações recentes do período filtrado."
-          entries={latestEntries}
-          noResults={noResults}
-          onClearFilters={onClearFilters}
-          onSelectEntry={onSelectEntry}
-          compact
-          actionLabel="Ver todos"
-          onAction={onOpenTransactions}
-        />
-        <SecondaryMetrics data={data} />
+        </aside>
       </div>
     </div>
   );
@@ -870,11 +864,25 @@ function SecondaryMetrics({ data }: { data: FinancialViewData }) {
 
 function CashFlowCard({ data }: { data: FinancialViewData }) {
   const maxValue = Math.max(
+    1,
     ...data.cashFlow.flatMap((point) => [point.revenue, point.expenses]),
   );
   const received = metricById(data, "revenue")?.value ?? 0;
   const expenses = metricById(data, "expenses")?.value ?? 0;
   const profit = received - expenses;
+  const latestPoint = data.cashFlow[data.cashFlow.length - 1];
+  const [activePointLabel, setActivePointLabel] = useState(
+    latestPoint?.label ?? "",
+  );
+  const activePoint =
+    data.cashFlow.find((point) => point.label === activePointLabel) ??
+    latestPoint;
+  const activeBalance = activePoint
+    ? activePoint.revenue - activePoint.expenses
+    : 0;
+  const hasMovement = data.cashFlow.some(
+    (point) => point.revenue > 0 || point.expenses > 0,
+  );
 
   return (
     <Card className="rounded-2xl">
@@ -909,41 +917,116 @@ function CashFlowCard({ data }: { data: FinancialViewData }) {
           {formatCurrency(profit)}.
         </p>
 
-        <div
-          className="h-44 rounded-xl border border-border bg-background p-4"
-          aria-label="Gráfico de receita e despesas por período"
-        >
-          <div className="flex h-full items-end gap-2">
-            {data.cashFlow.map((point) => (
-              <div
-                key={point.label}
-                className="flex min-w-0 flex-1 flex-col items-center gap-2"
-              >
-                <div className="flex h-28 w-full items-end justify-center gap-1">
-                  <span
-                    className="w-full max-w-5 rounded-t-md bg-primary"
-                    style={{
-                      height: `${Math.max(8, (point.revenue / maxValue) * 100)}%`,
-                    }}
-                    title={`Receita ${point.label}: ${formatCurrency(point.revenue)}`}
-                  />
-                  <span
-                    className="w-full max-w-5 rounded-t-md bg-destructive/70"
-                    style={{
-                      height: `${Math.max(8, (point.expenses / maxValue) * 100)}%`,
-                    }}
-                    title={`Despesas ${point.label}: ${formatCurrency(point.expenses)}`}
-                  />
-                </div>
-                <span className="truncate text-[11px] text-muted-foreground">
-                  {point.label}
-                </span>
+        <div className="rounded-xl border border-border bg-background p-3 sm:p-4">
+          {hasMovement ? (
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 sm:gap-3">
+              <div className="flex h-36 flex-col justify-between pb-6 text-right text-[10px] tabular-nums text-muted-foreground">
+                <span>{formatCurrency(maxValue)}</span>
+                <span>{formatCurrency(maxValue / 2)}</span>
+                <span>R$ 0,00</span>
               </div>
-            ))}
-          </div>
+
+              <div
+                className="relative h-42 border-b border-border"
+                aria-label="Gráfico de receita e despesas por período"
+              >
+                <span className="pointer-events-none absolute inset-x-0 top-0 border-t border-dashed border-border/80" />
+                <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-border/80" />
+                <div className="absolute inset-x-0 bottom-0 top-0 flex items-end gap-1 sm:gap-2">
+                  {data.cashFlow.map((point) => {
+                    const isActive = point.label === activePoint?.label;
+                    const revenueHeight = (point.revenue / maxValue) * 100;
+                    const expenseHeight = (point.expenses / maxValue) * 100;
+                    const balance = point.revenue - point.expenses;
+
+                    return (
+                      <button
+                        key={point.label}
+                        type="button"
+                        onClick={() => setActivePointLabel(point.label)}
+                        onFocus={() => setActivePointLabel(point.label)}
+                        aria-pressed={isActive}
+                        aria-label={`${point.label}: receita ${formatCurrency(point.revenue)}, despesas ${formatCurrency(point.expenses)}, saldo ${formatCurrency(balance)}`}
+                        className={cn(
+                          "group relative flex min-w-0 flex-1 flex-col justify-end rounded-md px-0.5 pb-6 outline-none transition-colors focus-visible:bg-primary-soft focus-visible:ring-2 focus-visible:ring-ring/30",
+                          isActive && "bg-primary-soft/70",
+                        )}
+                      >
+                        <div className="flex h-32 items-end justify-center gap-1">
+                          <span
+                            className="w-full max-w-5 rounded-t-md bg-primary transition-all duration-200 group-hover:bg-primary-hover"
+                            style={{ height: `${revenueHeight}%` }}
+                          />
+                          <span
+                            className="w-full max-w-5 rounded-t-md bg-destructive/70 transition-all duration-200 group-hover:bg-destructive"
+                            style={{ height: `${expenseHeight}%` }}
+                          />
+                        </div>
+                        <span className="absolute bottom-1 left-0 right-0 truncate px-0.5 text-center text-[10px] text-muted-foreground">
+                          {point.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid h-42 place-items-center text-center">
+              <p className="text-sm text-muted-foreground">
+                Sem entradas ou saídas neste período.
+              </p>
+            </div>
+          )}
+
+          {activePoint ? (
+            <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-3">
+              <CashFlowDayMetric
+                label="Receita"
+                value={activePoint.revenue}
+                tone="success"
+              />
+              <CashFlowDayMetric
+                label="Despesas"
+                value={activePoint.expenses}
+                tone="destructive"
+              />
+              <CashFlowDayMetric
+                label="Saldo do dia"
+                value={activeBalance}
+                tone={activeBalance >= 0 ? "primary" : "destructive"}
+              />
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function CashFlowDayMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "success" | "destructive" | "primary";
+}) {
+  return (
+    <div className="rounded-md bg-muted/50 px-3 py-2">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          "mt-0.5 text-sm font-semibold tabular-nums",
+          tone === "success" && "text-success",
+          tone === "destructive" && "text-destructive",
+          tone === "primary" && "text-primary",
+        )}
+      >
+        {formatCurrency(value)}
+      </p>
+    </div>
   );
 }
 
@@ -1705,49 +1788,6 @@ function SettingPill({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-border bg-background p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-semibold">{value}</p>
-    </div>
-  );
-}
-
-function PanelShell({
-  title,
-  description,
-  children,
-  onClose,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex items-end bg-foreground/30 sm:items-stretch sm:justify-end"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="financial-panel-title"
-    >
-      <aside className="flex max-h-[92dvh] w-full flex-col rounded-t-3xl border border-border bg-background shadow-2xl sm:h-full sm:max-h-none sm:w-[30rem] sm:rounded-none sm:border-y-0 sm:border-r-0">
-        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="Fechar"
-          >
-            <X className="size-5" />
-          </button>
-          <div>
-            <h2 id="financial-panel-title" className="text-lg font-semibold">
-              {title}
-            </h2>
-            {description ? (
-              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-            ) : null}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
-      </aside>
     </div>
   );
 }
@@ -2566,19 +2606,24 @@ function StateSwitcher({
 
 export function FinancialSkeleton() {
   return (
-    <div className="mx-auto max-w-[1400px] space-y-4">
-      <div className="h-28 animate-pulse rounded-2xl bg-muted" />
+    <div className="space-y-4" aria-busy="true" aria-live="polite">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-28 animate-pulse rounded-xl bg-muted" />
+          <div
+            key={index}
+            className="h-28 motion-safe:animate-pulse rounded-lg border border-border bg-muted/70"
+          />
         ))}
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <div className="h-96 animate-pulse rounded-2xl bg-muted" />
-        <div className="space-y-4">
-          <div className="h-72 animate-pulse rounded-2xl bg-muted" />
-          <div className="h-56 animate-pulse rounded-2xl bg-muted" />
+      <div className="grid items-start gap-3 xl:grid-cols-4">
+        <div className="space-y-4 xl:col-span-3">
+          <div className="h-[28rem] motion-safe:animate-pulse rounded-lg border border-border bg-muted/70" />
+          <div className="h-72 motion-safe:animate-pulse rounded-lg border border-border bg-muted/70" />
         </div>
+        <aside className="hidden space-y-3 xl:col-span-1 xl:block">
+          <div className="h-44 motion-safe:animate-pulse rounded-lg border border-border bg-muted/70" />
+          <div className="h-56 motion-safe:animate-pulse rounded-lg border border-border bg-muted/70" />
+        </aside>
       </div>
     </div>
   );

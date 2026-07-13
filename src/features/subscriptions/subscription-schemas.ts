@@ -5,7 +5,7 @@ import { dateInputSchema } from "@/lib/validation";
 
 const moneySchema = z.preprocess(
   parseBrazilianDecimal,
-  z.number().min(0, "O valor nao pode ser negativo.").max(99999999),
+  z.number().min(0, "O valor não pode ser negativo.").max(99999999),
 );
 
 export const updateSubscriptionSchema = z

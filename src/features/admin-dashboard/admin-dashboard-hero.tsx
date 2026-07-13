@@ -43,7 +43,7 @@ export function AdminDashboardHero({
             Operação da plataforma
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Acompanhe prestadores, assinaturas e eventos críticos do AgendaZap.
+            Acompanhe prestadores, assinaturas e eventos críticos do Agendaí.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Badge variant={PLATFORM_HEALTH_VARIANT[platformHealth]}>

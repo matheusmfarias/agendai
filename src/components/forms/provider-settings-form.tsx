@@ -272,7 +272,7 @@ export function ProviderSettingsForm({
         <aside className="space-y-3">
           <Card className="border-border/70 bg-card/95 py-0 shadow-sm">
             <CardContent className="p-2">
-              <div className="space-y-1">
+              <div className="flex gap-1 overflow-x-auto pb-1 xl:block xl:space-y-1 xl:pb-0">
                 {TABS.map((tab) => {
                   const Icon = tab.icon;
                   const active = activeTab === tab.id;
@@ -282,7 +282,7 @@ export function ProviderSettingsForm({
                       type="button"
                       onClick={() => setActiveTab(tab.id)}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-colors",
+                        "flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-colors xl:w-full",
                         active
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -354,11 +354,11 @@ export function ProviderSettingsForm({
                 </div>
 
                 <CheckboxField
-                  label="Link publico ativo"
+                  label="Link público ativo"
                   description={
                     publicLinkActive
-                      ? "Clientes conseguem acessar o link publico e iniciar agendamentos."
-                      : "O link publico mostra a tela de agendamento indisponivel."
+                      ? "Clientes conseguem acessar o link público e iniciar agendamentos."
+                      : "O link público mostra a tela de agendamento indisponível."
                   }
                   checked={publicLinkActive}
                   onChange={(checked) =>

@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "20260709100000_expand_provider_settings";
+const PRISMA_SCHEMA_VERSION = "20260710120000_add_provider_notifications";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;

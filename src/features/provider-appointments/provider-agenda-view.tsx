@@ -167,6 +167,7 @@ type ProviderAgendaViewProps = {
   customers: FilterOption[];
   filters: Record<string, string | undefined>;
   selectedAppointment: AgendaAppointmentDetail | null;
+  highlightAppointmentId?: string;
   selectedScheduleBlock: AgendaScheduleBlock | null;
   canEditAppointment: boolean;
   createAction: (
@@ -226,26 +227,26 @@ function storeAgendaViewMode(viewMode: AgendaViewMode) {
 }
 
 const STATUS_TONE: Record<AppointmentStatus, string> = {
-  REQUESTED: "border-l-amber-500 bg-amber-50/90 text-amber-950",
-  CONFIRMED: "border-l-primary bg-primary/8 text-foreground",
-  WAITING_INFO: "border-l-sky-500 bg-sky-50/90 text-sky-950",
-  RESCHEDULED: "border-l-violet-500 bg-violet-50/90 text-violet-950",
+  REQUESTED: "border-l-amber-700 bg-amber-200 text-amber-950 ring-1 ring-amber-300/90",
+  CONFIRMED: "border-l-primary bg-primary/15 text-foreground ring-1 ring-primary/20",
+  WAITING_INFO: "border-l-sky-700 bg-sky-200 text-sky-950 ring-1 ring-sky-300/90",
+  RESCHEDULED: "border-l-violet-700 bg-violet-200 text-violet-950 ring-1 ring-violet-300/90",
   CANCELED_BY_CUSTOMER:
-    "border-l-muted-foreground/70 bg-muted/70 text-muted-foreground",
+    "border-l-slate-600 bg-slate-200 text-slate-800 ring-1 ring-slate-300/90",
   CANCELED_BY_PROVIDER:
-    "border-l-muted-foreground/70 bg-muted/70 text-muted-foreground",
-  NO_SHOW: "border-l-rose-500 bg-rose-50/90 text-rose-950",
-  IN_PROGRESS: "border-l-emerald-500 bg-emerald-50/90 text-emerald-950",
-  FINISHED: "border-l-neutral-500 bg-stone-100 text-neutral-950",
+    "border-l-slate-600 bg-slate-200 text-slate-800 ring-1 ring-slate-300/90",
+  NO_SHOW: "border-l-rose-700 bg-rose-200 text-rose-950 ring-1 ring-rose-300/90",
+  IN_PROGRESS: "border-l-emerald-700 bg-emerald-200 text-emerald-950 ring-1 ring-emerald-300/90",
+  FINISHED: "border-l-stone-600 bg-stone-200 text-stone-950 ring-1 ring-stone-300/90",
 };
 
 const APPOINTMENT_ACCENTS = [
-  "border-l-primary bg-primary/8",
-  "border-l-amber-500 bg-amber-50/85",
-  "border-l-lime-500 bg-lime-50/85",
-  "border-l-sky-500 bg-sky-50/85",
-  "border-l-violet-500 bg-violet-50/85",
-  "border-l-rose-500 bg-rose-50/85",
+  "border-l-blue-700 bg-blue-100 text-blue-950 ring-1 ring-blue-200/90",
+  "border-l-amber-700 bg-amber-100 text-amber-950 ring-1 ring-amber-200/90",
+  "border-l-lime-700 bg-lime-100 text-lime-950 ring-1 ring-lime-200/90",
+  "border-l-sky-700 bg-sky-100 text-sky-950 ring-1 ring-sky-200/90",
+  "border-l-violet-700 bg-violet-100 text-violet-950 ring-1 ring-violet-200/90",
+  "border-l-rose-700 bg-rose-100 text-rose-950 ring-1 ring-rose-200/90",
 ];
 
 type AppointmentCollisionLayout = {
@@ -282,7 +283,7 @@ function ConfirmationRequestBadge({
   return (
     <span
       className={cn(
-        "inline-flex w-fit shrink-0 items-center rounded-full border border-amber-300/70 bg-amber-50/90 font-semibold uppercase tracking-[0.08em] text-amber-700 shadow-sm",
+        "inline-flex w-fit shrink-0 items-center rounded-full border border-amber-400 bg-amber-200 font-semibold uppercase tracking-[0.08em] text-amber-950 shadow-sm",
         compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-0.5 text-[10px]",
         className,
       )}
@@ -826,6 +827,7 @@ function AppointmentBlock({
   dayEndMinutes,
   collisionLayout,
   gutterRem = 0.75,
+  highlighted = false,
 }: {
   appointment: AgendaAppointment;
   href: string;
@@ -834,6 +836,7 @@ function AppointmentBlock({
   dayEndMinutes: number;
   collisionLayout?: AppointmentCollisionLayout;
   gutterRem?: number;
+  highlighted?: boolean;
 }) {
   const start = localMinutes(appointment.startsAt);
   const end = localMinutes(appointment.endsAt);
@@ -877,6 +880,7 @@ function AppointmentBlock({
               ? "px-3 py-2"
               : "px-3.5 py-2.5",
         appointmentTone(appointment),
+        highlighted && "ring-2 ring-primary ring-offset-2",
       )}
       style={{ top, height, ...horizontalStyle }}
       title={`${formatTime(appointment.startsAt)} - ${formatTime(
@@ -893,6 +897,11 @@ function AppointmentBlock({
           aria-label="Checkout realizado"
         >
           <CircleDollarSign className="size-3.5" />
+        </span>
+      ) : null}
+      {highlighted && !singleLine ? (
+        <span className="absolute bottom-1.5 right-2 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+          Novo
         </span>
       ) : null}
       {singleLine ? (
@@ -1919,9 +1928,9 @@ function ScheduleBlockPanel({
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-[88dvh] w-full sm:inset-y-0 sm:left-auto sm:right-0 sm:h-auto sm:w-[min(100vw,30rem)] lg:w-[29rem] xl:w-[30rem]">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-[92dvh] w-full sm:inset-y-0 sm:left-auto sm:right-0 sm:h-auto sm:w-[min(100vw,30rem)] lg:w-[29rem] xl:w-[30rem]">
       <aside
-        className={`agenda-side-panel pointer-events-auto relative flex h-full w-full flex-col rounded-t-3xl border-t border-border bg-background shadow-2xl transition-transform duration-300 ease-out will-change-transform sm:rounded-none sm:border-l sm:border-t-0 ${
+        className={`agenda-side-panel pointer-events-auto relative flex h-full w-full flex-col rounded-t-xl border-t border-border bg-background shadow-2xl transition-transform duration-300 ease-out will-change-transform sm:rounded-none sm:border-l sm:border-t-0 ${
           isClosing
             ? "translate-y-full sm:translate-x-full sm:translate-y-0"
             : "translate-y-0 sm:translate-x-0 sm:translate-y-0"
@@ -2515,7 +2524,7 @@ function AppointmentDetailPanel({
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-[92dvh] w-full sm:inset-y-0 sm:left-auto sm:right-0 sm:h-auto sm:w-[min(100vw,30rem)] lg:w-[29rem] xl:w-[30rem]">
       <aside
-        className={`agenda-side-panel pointer-events-auto relative flex h-full w-full flex-col rounded-t-3xl border-t border-border bg-background shadow-2xl transition-transform duration-300 ease-out will-change-transform sm:rounded-none sm:border-l sm:border-t-0 ${
+        className={`agenda-side-panel pointer-events-auto relative flex h-full w-full flex-col rounded-t-xl border-t border-border bg-background shadow-2xl transition-transform duration-300 ease-out will-change-transform sm:rounded-none sm:border-l sm:border-t-0 ${
           entered && !isClosing
             ? "translate-y-0 sm:translate-x-0 sm:translate-y-0"
             : "translate-y-full sm:translate-x-full sm:translate-y-0"
@@ -2857,6 +2866,7 @@ export function ProviderAgendaView({
   customers,
   filters,
   selectedAppointment,
+  highlightAppointmentId,
   selectedScheduleBlock,
   canEditAppointment,
   createAction,
@@ -2939,22 +2949,10 @@ export function ProviderAgendaView({
     top: number;
     label: string;
   } | null>(null);
+  const [isAppointmentHighlighted, setIsAppointmentHighlighted] =
+    useState(false);
 
   const actionMenuOpen = Boolean(slotMenu || floatingMenuOpen);
-
-  useEffect(() => {
-    if (!sidePanelOpen) return;
-
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
-    };
-  }, [sidePanelOpen]);
 
   useEffect(() => {
     if (!isCreating) return;
@@ -2976,6 +2974,23 @@ export function ProviderAgendaView({
 
     return () => window.cancelAnimationFrame(frame);
   }, [selectedAppointmentId, isCreating]);
+
+  useEffect(() => {
+    if (!highlightAppointmentId) return;
+
+    const frame = window.requestAnimationFrame(() =>
+      setIsAppointmentHighlighted(true),
+    );
+    const timeoutId = window.setTimeout(
+      () => setIsAppointmentHighlighted(false),
+      6000,
+    );
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeoutId);
+    };
+  }, [highlightAppointmentId]);
 
   useEffect(() => {
     if (!blockPanelOpen || isCreating) return;
@@ -3681,6 +3696,10 @@ export function ProviderAgendaView({
                       dayStartMinutes={dayStartMinutes}
                       dayEndMinutes={dayEndMinutes}
                       collisionLayout={dayCollisionLayouts.get(appointment.id)}
+                      highlighted={
+                        isAppointmentHighlighted &&
+                        appointment.id === highlightAppointmentId
+                      }
                     />
                   ))}
 
@@ -3814,7 +3833,7 @@ export function ProviderAgendaView({
       {isCreating ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-[92dvh] w-full sm:inset-y-0 sm:left-auto sm:right-0 sm:h-auto sm:w-[min(100vw,30rem)] lg:w-[29rem] xl:w-[30rem]">
           <aside
-            className={`agenda-side-panel pointer-events-auto relative flex h-full w-full flex-col rounded-t-3xl border-t border-border bg-background shadow-2xl transition-transform duration-300 ease-out will-change-transform sm:rounded-none sm:border-l sm:border-t-0 ${
+            className={`agenda-side-panel pointer-events-auto relative flex h-full w-full flex-col rounded-t-xl border-t border-border bg-background shadow-2xl transition-transform duration-300 ease-out will-change-transform sm:rounded-none sm:border-l sm:border-t-0 ${
               createPanelEntered && !isPanelClosing
                 ? "translate-y-0 sm:translate-x-0 sm:translate-y-0"
                 : "translate-y-full sm:translate-x-full sm:translate-y-0"

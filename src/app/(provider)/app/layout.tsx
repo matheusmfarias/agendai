@@ -38,6 +38,7 @@ export default async function ProviderLayout({
       sidebarSubtitle="Painel do prestador"
       sidebarUser={context.user}
       initialSidebarCollapsed={initialSidebarCollapsed}
+      providerNotificationsEnabled
     >
       {children}
     </DashboardShell>

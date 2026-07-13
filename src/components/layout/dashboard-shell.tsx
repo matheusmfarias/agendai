@@ -2,13 +2,17 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
-import { CalendarCheck2, Menu, UserRound } from "lucide-react";
+import { Menu, UserRound } from "lucide-react";
 
+import { AgendaiLogo } from "@/components/brand/agendai-logo";
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
+import { ProviderNotificationCenter } from "@/features/provider-notifications/components/provider-notification-center";
 import {
   ProviderAgendaSkeleton,
+  ProviderAvailabilitySkeleton,
   ProviderDashboardSkeleton,
+  ProviderFinancialSkeleton,
   ProviderListPageSkeleton,
 } from "@/components/layout/provider-loading-states";
 import {
@@ -35,6 +39,7 @@ type DashboardShellProps = {
     email: string;
   };
   initialSidebarCollapsed?: boolean;
+  providerNotificationsEnabled?: boolean;
 };
 
 const SIDEBAR_STORAGE_KEY = "agenda-zap-sidebar-collapsed";
@@ -84,6 +89,8 @@ function PendingRouteSkeleton({ href }: { href: string | null }) {
 
   if (target.includes("/appointments")) return <ProviderAgendaSkeleton />;
   if (target.includes("/dashboard")) return <ProviderDashboardSkeleton />;
+  if (target.includes("/financial")) return <ProviderFinancialSkeleton />;
+  if (target.includes("/availability")) return <ProviderAvailabilitySkeleton />;
 
   return <ProviderListPageSkeleton />;
 }
@@ -99,6 +106,7 @@ export function DashboardShell({
   sidebarSubtitle,
   sidebarUser,
   initialSidebarCollapsed = true,
+  providerNotificationsEnabled = false,
 }: DashboardShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -151,6 +159,7 @@ export function DashboardShell({
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
       />
+      {providerNotificationsEnabled ? <ProviderNotificationCenter /> : null}
       <div
         className={`transition-[padding] duration-300 ease-out ${
           sidebarCollapsed ? "lg:pl-[5.5rem]" : "lg:pl-[17rem]"
@@ -196,13 +205,6 @@ export function DashboardShell({
 
 function LinkLogo() {
   return (
-    <div className="flex items-center gap-2">
-      <span className="grid size-9 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-        <CalendarCheck2 className="size-5" />
-      </span>
-      <span className="font-display text-base font-semibold tracking-tight">
-        AgendaZap
-      </span>
-    </div>
+    <AgendaiLogo size="sm" />
   );
 }

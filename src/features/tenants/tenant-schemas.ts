@@ -27,21 +27,20 @@ const slugSchema = z
 const documentNumberSchema = z
   .string()
   .trim()
-  .max(20, "Informe um documento com no maximo 20 caracteres.")
+  .max(20, "Informe um documento com no máximo 20 caracteres.")
   .optional()
   .refine((value) => {
     if (!value) return true;
     const digits = value.replace(/\D/g, "");
     return digits.length === 11 || digits.length === 14;
-  }, "Informe um CPF ou CNPJ valido.");
+  }, "Informe um CPF ou CNPJ válido.");
 
-const tenantBaseSchema = z
-  .object({
+const tenantBaseSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome do negócio."),
-    slug: slugSchema,
-    documentType: z.enum(["CPF", "CNPJ"]).optional(),
-    documentNumber: documentNumberSchema,
-    publicDisplayName: z.string().trim().max(120).optional(),
+  slug: slugSchema,
+  documentType: z.enum(["CPF", "CNPJ"]).optional(),
+  documentNumber: documentNumberSchema,
+  publicDisplayName: z.string().trim().max(120).optional(),
   responsibleName: z
     .string()
     .trim()
@@ -55,27 +54,27 @@ const tenantBaseSchema = z
     .trim()
     .length(2, "Informe a UF com 2 caracteres.")
     .transform((value) => value.toUpperCase()),
-    postalCode: z.string().trim().max(20).optional(),
-    neighborhood: z.string().trim().max(100).optional(),
-    address: z.string().trim().max(250).optional(),
-    addressComplement: z.string().trim().max(120).optional(),
-    googleMapsUrl: z
-      .union([z.literal(""), z.string().trim().url("Informe uma URL vÃ¡lida.")])
-      .optional(),
-    serviceLocation: z.enum(["BUSINESS_ADDRESS", "CUSTOMER_ADDRESS", "BOTH"]),
-    timezone: z.enum([
-      "America/Sao_Paulo",
-      "America/Manaus",
-      "America/Cuiaba",
-      "America/Rio_Branco",
-    ]),
-    defaultAppointmentDuration: z.coerce.number().int().min(5).max(720),
-    defaultSlotInterval: z.coerce.number().int().min(5).max(240),
-    minBookingNoticeMinutes: z.coerce.number().int().min(0).max(43200),
-    maxBookingAdvanceDays: z.coerce.number().int().min(1).max(365),
-    description: z.string().trim().max(2000).optional(),
-    status: z.enum(["ACTIVE", "SUSPENDED", "CANCELED"]),
-  });
+  postalCode: z.string().trim().max(20).optional(),
+  neighborhood: z.string().trim().max(100).optional(),
+  address: z.string().trim().max(250).optional(),
+  addressComplement: z.string().trim().max(120).optional(),
+  googleMapsUrl: z
+    .union([z.literal(""), z.string().trim().url("Informe uma URL válida.")])
+    .optional(),
+  serviceLocation: z.enum(["BUSINESS_ADDRESS", "CUSTOMER_ADDRESS", "BOTH"]),
+  timezone: z.enum([
+    "America/Sao_Paulo",
+    "America/Manaus",
+    "America/Cuiaba",
+    "America/Rio_Branco",
+  ]),
+  defaultAppointmentDuration: z.coerce.number().int().min(5).max(720),
+  defaultSlotInterval: z.coerce.number().int().min(5).max(240),
+  minBookingNoticeMinutes: z.coerce.number().int().min(0).max(43200),
+  maxBookingAdvanceDays: z.coerce.number().int().min(1).max(365),
+  description: z.string().trim().max(2000).optional(),
+  status: z.enum(["ACTIVE", "SUSPENDED", "CANCELED"]),
+});
 
 const ownerCredentialsSchema = z
   .object({

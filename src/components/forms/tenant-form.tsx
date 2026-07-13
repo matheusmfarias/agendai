@@ -137,7 +137,7 @@ export function TenantForm({
           <FieldError message={fieldError("slug")} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="publicDisplayName">Nome publico exibido</Label>
+          <Label htmlFor="publicDisplayName">Nome público exibido</Label>
           <Input
             id="publicDisplayName"
             placeholder="Opcional, se for diferente do nome do negocio"
@@ -219,13 +219,13 @@ export function TenantForm({
       </div>
 
       <fieldset className="grid gap-5 rounded-lg border p-4 md:grid-cols-2">
-        <legend className="px-2 text-sm font-medium">Perfil publico</legend>
+        <legend className="px-2 text-sm font-medium">Perfil público</legend>
         <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="description">Descricao do negocio</Label>
+          <Label htmlFor="description">Descrição do negócio</Label>
           <Textarea
             id="description"
             rows={4}
-            placeholder="Resumo que aparece no link publico e ajuda o cliente a entender o atendimento."
+            placeholder="Resumo que aparece no link público e ajuda o cliente a entender o atendimento."
             {...form.register("description")}
           />
           <FieldError message={fieldError("description")} />
@@ -288,7 +288,7 @@ export function TenantForm({
       <fieldset className="grid gap-5 rounded-lg border p-4 md:grid-cols-2">
         <legend className="px-2 text-sm font-medium">Regras padrao</legend>
         <div className="space-y-2">
-          <Label htmlFor="timezone">Fuso horario</Label>
+          <Label htmlFor="timezone">Fuso horário</Label>
           <Select id="timezone" {...form.register("timezone")}>
             <option value="America/Sao_Paulo">Brasilia (BRT)</option>
             <option value="America/Manaus">Manaus (AMT)</option>

@@ -17,17 +17,17 @@ const TONE_DEFAULTS: Record<ConfirmationStampTone, string> = {
 };
 
 /**
- * AgendaZap's signature visual element — the "confirmation stamp".
+ * Agendaí signature visual element: the confirmation stamp.
  *
  * Used sparingly in key confirmation moments:
  *   - Booking confirmation page
  *   - Onboarding completion
  *
  * The stamp renders with:
- *   - Terracotta primary color
+ *   - Agendaí primary color
  *   - Slightly rotated text (respects prefers-reduced-motion)
  *   - A stamp-like dashed border
- *   - Bold display typography (Lora when available)
+ *   - Bold display typography
  *
  * Should NOT be used for generic badges or status indicators.
  */

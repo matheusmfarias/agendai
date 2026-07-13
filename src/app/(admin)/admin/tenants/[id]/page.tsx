@@ -130,7 +130,7 @@ export default async function TenantDetailPage({
               value={
                 tenant.documentNumber
                   ? `${tenant.documentType ?? "Documento"} ${tenant.documentNumber}`
-                  : "Nao informado"
+                  : "Não informado"
               }
             />
             <Detail label="E-mail" value={tenant.email} />

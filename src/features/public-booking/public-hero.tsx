@@ -28,7 +28,7 @@ export function PublicHero({ tenant, reviewSummary }: PublicHeroProps) {
   const initials = getPublicBusinessInitials(displayName);
 
   return (
-    <section className="rounded-3xl border border-border bg-card p-4 shadow-sm sm:p-5">
+    <section className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
       <div className="flex items-start gap-3">
         {tenant.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element

@@ -38,9 +38,9 @@ export function FoundationPlaceholder({
           <div className="rounded-2xl border bg-background p-4">
             <p className="font-semibold text-foreground">Status atual</p>
             <p className="mt-1">
-              Ainda nao ha fluxo operacional completo nesta area. As regras
+              Ainda não há fluxo operacional completo nesta área. As regras
               reais continuam nas telas ativas de admin, prestador, cliente e
-              link publico.
+              link público.
             </p>
           </div>
           <Button asChild variant="outline">

@@ -1,5 +1,7 @@
 import { ProviderSettingsForm } from "@/components/forms/provider-settings-form";
+import { NotificationSoundSettings } from "@/features/provider-notifications/components/provider-notification-center";
 import { PageHeading } from "@/components/layout/page-heading";
+import { ModulePage } from "@/components/layout/module-page";
 import { SuccessAlert } from "@/components/layout/success-alert";
 import { requireProviderManager } from "@/features/auth/permissions";
 import { updateProviderSettingsAction } from "@/server/actions/provider-actions";
@@ -18,7 +20,7 @@ export default async function SettingsPage({
   if (!tenant) return null;
 
   return (
-    <>
+    <ModulePage>
       <PageHeading
         title="Configurações do negócio"
         description="Centralize perfil público, regras de agendamento, comunicação e dados da conta."
@@ -89,6 +91,7 @@ export default async function SettingsPage({
           description: tenant.description ?? "",
         }}
       />
-    </>
+      <NotificationSoundSettings />
+    </ModulePage>
   );
 }

@@ -17,13 +17,13 @@ function Alert({
         variant === "default" &&
           "border-border bg-muted/50 text-foreground",
         variant === "success" &&
-          "border-success/30 bg-success/10 text-success",
+          "border-success/30 bg-success/10 text-success-foreground",
         variant === "destructive" &&
-          "border-destructive/30 bg-destructive/5 text-destructive",
+          "border-destructive/30 bg-destructive/5 text-destructive-text",
         variant === "warning" &&
           "border-warning/40 bg-warning/10 text-warning-foreground",
         variant === "info" &&
-          "border-info/30 bg-info/10 text-info",
+          "border-info/30 bg-info/10 text-info-foreground",
         className,
       )}
       {...props}

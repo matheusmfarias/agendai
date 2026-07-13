@@ -141,6 +141,8 @@ model User {
   appointments   Appointment[]
   customerProfiles Customer[]
   appointmentReviews AppointmentReview[]
+  providerNotifications ProviderNotification[]
+  providerNotificationPreferences ProviderNotificationPreference[]
 
   @@map("users")
 }
@@ -208,6 +210,8 @@ model Tenant {
   financialEntries     FinancialEntry[]
   financialPayments    FinancialPayment[]
   financialSettings    FinancialSettings?
+  providerNotifications ProviderNotification[]
+  providerNotificationPreferences ProviderNotificationPreference[]
 
   @@map("tenants")
 }
@@ -503,6 +507,53 @@ model AppointmentEvent {
   @@index([appointmentId])
   @@index([tenantId, createdAt])
   @@map("appointment_events")
+}
+
+model ProviderNotification {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  recipientUserId String?   @map("recipient_user_id") @db.Uuid
+  type            String
+  priority        String    @default("medium")
+  title           String
+  description     String
+  entityType      String?   @map("entity_type")
+  entityId        String?   @map("entity_id") @db.Uuid
+  actionUrl       String?   @map("action_url")
+  readAt          DateTime? @map("read_at") @db.Timestamptz(3)
+  archivedAt      DateTime? @map("archived_at") @db.Timestamptz(3)
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipientUser   User?     @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, readAt])
+  @@index([tenantId, type])
+  @@index([recipientUserId])
+  @@unique([tenantId, type, entityId])
+  @@map("provider_notifications")
+}
+
+model ProviderNotificationPreference {
+  id                              String   @id @default(uuid()) @db.Uuid
+  tenantId                        String   @map("tenant_id") @db.Uuid
+  userId                          String   @map("user_id") @db.Uuid
+  panelNotificationsEnabled       Boolean  @default(true) @map("panel_notifications_enabled")
+  soundEnabled                    Boolean  @default(false) @map("sound_enabled")
+  publicBookingNotificationsEnabled Boolean @default(true) @map("public_booking_notifications_enabled")
+  cancellationNotificationsEnabled Boolean  @default(true) @map("cancellation_notifications_enabled")
+  rescheduleNotificationsEnabled   Boolean  @default(true) @map("reschedule_notifications_enabled")
+  paymentNotificationsEnabled      Boolean  @default(true) @map("payment_notifications_enabled")
+  createdAt                        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant                           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("provider_notification_preferences")
 }
 
 model FinancialEntry {

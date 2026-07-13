@@ -20,7 +20,7 @@ export function PublicUnavailablePage() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <Card className="w-full max-w-md text-center shadow-sm">
         <CardHeader className="place-items-center">
-          <span className="mb-3 grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
+          <span className="mb-3 grid size-12 place-items-center rounded-md bg-primary-soft text-primary">
             <CalendarOff className="size-6" />
           </span>
           <CardTitle>Agendamento indisponível</CardTitle>

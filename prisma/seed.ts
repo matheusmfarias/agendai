@@ -45,7 +45,7 @@ async function main() {
   await prisma.plan.upsert({
     where: { name: "Inicial" },
     update: {
-      description: "Plano inicial do AgendaZap.",
+      description: "Plano inicial do Agendaí.",
       monthlyPrice: "49.90",
       annualPrice: "499.00",
       whatsappEnabled: true,
@@ -54,7 +54,7 @@ async function main() {
     },
     create: {
       name: "Inicial",
-      description: "Plano inicial do AgendaZap.",
+      description: "Plano inicial do Agendaí.",
       monthlyPrice: "49.90",
       annualPrice: "499.00",
       whatsappEnabled: true,

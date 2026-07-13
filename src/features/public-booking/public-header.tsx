@@ -74,7 +74,7 @@ export function PublicHeader({
           {tenantName ? (
             <Link
               href={`/${tenantSlug}`}
-              className="flex min-w-0 items-center gap-2 rounded-full pr-2 font-sans text-sm font-semibold text-foreground transition-colors hover:text-primary"
+              className="flex min-w-0 items-center gap-2 rounded-full pr-2 font-sans text-sm font-semibold text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-[11px] font-sans font-bold text-primary">
                 {initials}
@@ -99,7 +99,7 @@ export function PublicHeader({
           {user?.isCustomer ? (
             <Link
               href="/cliente"
-              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               Minha conta
             </Link>
@@ -107,7 +107,7 @@ export function PublicHeader({
             <form action={logoutAction}>
               <button
                 type="submit"
-                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
               >
                 Sair
               </button>
@@ -115,7 +115,7 @@ export function PublicHeader({
           ) : (
             <Link
               href={loginHref}
-              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               Entrar
             </Link>

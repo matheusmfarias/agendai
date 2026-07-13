@@ -575,7 +575,7 @@ export function OnboardingWizard({
               {[
                 { label: "Serviços ativos", ok: checklist.hasActiveService },
                 { label: "Horários configurados", ok: checklist.hasAvailability },
-                { label: "Link publico liberado", ok: checklist.publicLinkAllowed },
+                { label: "Link público liberado", ok: checklist.publicLinkAllowed },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-2">
                   {item.ok ? (

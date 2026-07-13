@@ -120,7 +120,7 @@ export function CalendarDatePicker({
         <div className="mb-3 flex items-center justify-between">
           <button
             type="button"
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))}
             aria-label="Mês anterior"
           >
@@ -131,7 +131,7 @@ export function CalendarDatePicker({
           </p>
           <button
             type="button"
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))}
             aria-label="Próximo mês"
           >
@@ -153,7 +153,7 @@ export function CalendarDatePicker({
               key={day.value}
               type="button"
               onClick={() => onChange(day.value)}
-              className={`rounded-full py-1.5 transition-colors hover:bg-muted ${
+            className={`rounded-full py-1.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${
                 day.value === value
                   ? "bg-primary text-primary-foreground hover:bg-primary"
                   : day.value === today

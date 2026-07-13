@@ -95,7 +95,7 @@ export function PublicServiceSearch({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Buscar serviço"
-            className="h-11 rounded-2xl border-border bg-card pl-9 shadow-none"
+            className="h-11 rounded-md border-border bg-card pl-9 shadow-none"
             aria-label="Buscar serviço"
           />
         </div>
@@ -112,7 +112,7 @@ export function PublicServiceSearch({
           ))}
         </div>
       ) : (
-        <div className="rounded-3xl border border-dashed border-border bg-card px-5 py-8 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-card px-5 py-8 text-center">
           <p className="font-semibold text-foreground">
             Nenhum serviço encontrado
           </p>

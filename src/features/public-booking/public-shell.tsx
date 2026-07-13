@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 /**
  * Thin shell for all public booking pages.
  *
- * Applies the off-white paper background (--background) and constrains
+ * Applies the Agendaí neutral background and constrains
  * content to a readable max-width with consistent padding.
  *
  * All public pages should use this as their outermost wrapper.

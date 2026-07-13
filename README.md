@@ -1,6 +1,6 @@
-# AgendaZap
+# Agendaí
 
-SaaS multiempresa AgendaZap com painel administrativo global e primeira
+SaaS multiempresa Agendaí com painel administrativo global e primeira
 versão funcional do painel operacional do prestador.
 
 ## Stack
@@ -350,7 +350,7 @@ Typebot sem WhatsApp real. Não envia mensagens. Documentação em
 [`/docs/typebot/simulator.md`](/docs/typebot/simulator.md).
 
 **Phase 10 — Typebot Real Setup Guide:** Guia completo para montar o fluxo
-conversacional no Typebot real usando a API do AgendaZap. Inclui passo a passo
+conversacional no Typebot real usando a API do Agendaí. Inclui passo a passo
 dos blocos, variáveis, blocos HTTP, mapeamento de listas numeradas e checklist
 de validação. Documentação em [`/docs/typebot/real-setup-guide.md`](/docs/typebot/real-setup-guide.md).
 WhatsApp Cloud API própria permanece fora do escopo.

@@ -54,7 +54,7 @@ function getHeroCta(props: ProviderDashboardHeroProps): HeroCta {
 
   if (policyWarningLevel === "BLOCKED") {
     return {
-      label: "Ver configuracoes",
+      label: "Ver configurações",
       href: "/app/settings",
       icon: <Settings className="size-4" />,
     };

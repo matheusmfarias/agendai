@@ -4,7 +4,7 @@ import { parseBrazilianDecimal } from "@/lib/input-formatters";
 
 const moneySchema = z.preprocess(
   parseBrazilianDecimal,
-  z.number().min(0, "O valor nao pode ser negativo.").max(99999999),
+  z.number().min(0, "O valor não pode ser negativo.").max(99999999),
 );
 
 const planBaseSchema = z.object({

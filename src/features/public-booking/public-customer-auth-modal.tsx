@@ -87,7 +87,7 @@ export function PublicCustomerAuthModal({
       aria-modal="true"
       aria-labelledby="public-customer-auth-title"
     >
-      <div className="relative flex min-h-dvh w-full flex-col bg-background px-7 py-7 sm:min-h-0 sm:max-w-md sm:rounded-3xl sm:border sm:px-8 sm:py-8 sm:shadow-xl">
+      <div className="relative flex min-h-dvh w-full flex-col bg-background px-7 py-7 sm:min-h-0 sm:max-w-md sm:rounded-xl sm:border sm:px-8 sm:py-8 sm:shadow-xl">
         <div className="mb-8 flex items-center justify-between">
           <button
             type="button"
@@ -236,7 +236,7 @@ export function PublicCustomerAuthModal({
                 Inscrever-se
               </h2>
               <p className="mt-7 text-xl font-bold text-foreground">
-                Crie sua conta no AgendaZap
+                Crie sua conta no Agendaí
               </p>
             </div>
 

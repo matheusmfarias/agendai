@@ -12,6 +12,10 @@ import type {
   UpdateAppointmentInput,
 } from "@/features/appointments/appointment-schemas";
 import { validateCustomFields } from "@/features/booking-core/custom-fields";
+import {
+  createProviderNotification,
+  type CreateProviderNotificationInput,
+} from "@/features/provider-notifications/notification-service";
 import type { OperationalActorContext } from "@/server/services/customer-service";
 import {
   getSubscriptionPolicy,
@@ -180,6 +184,25 @@ function validateAppointmentCustomValues(
   }
 
   return result.rows;
+}
+
+function notificationDateParts(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const field = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    bookingDate: `${field("year")}-${field("month")}-${field("day")}`,
+    bookingTime: `${field("hour")}:${field("minute")}`,
+  };
 }
 
 async function getExtraServicesForCustomFields(
@@ -625,12 +648,13 @@ export async function changeAppointmentStatus(
   finalPrice: number | undefined,
   actor: OperationalActorContext,
 ) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const current = await tx.appointment.findFirst({
       where: { id, tenantId: actor.tenantId },
       include: {
         customer: { select: { name: true } },
         service: { select: { name: true } },
+        tenant: { select: { timezone: true } },
       },
     });
     if (!current) throw new Error("Agendamento não encontrado.");
@@ -676,8 +700,57 @@ export async function changeAppointmentStatus(
         metadata,
       ),
     });
-    return appointment;
+    let notification: CreateProviderNotificationInput | null = null;
+    if (status === "FINISHED") {
+      const payment = await tx.financialEntry.findFirst({
+        where: {
+          tenantId: actor.tenantId,
+          appointmentId: appointment.id,
+          status: "PAID",
+        },
+        select: { id: true },
+      });
+      if (!payment) {
+        const { bookingDate, bookingTime } = notificationDateParts(
+          appointment.startsAt,
+          current.tenant.timezone,
+        );
+        notification = {
+          tenantId: actor.tenantId,
+          type: "payment_pending",
+          priority: "medium",
+          title: "Pagamento pendente",
+          description: `O atendimento de ${current.customer.name} em ${current.service.name} ainda está em aberto.`,
+          entityType: "appointment",
+          entityId: appointment.id,
+          actionUrl: "/app/financial",
+          metadata: {
+            customerName: current.customer.name,
+            serviceName: current.service.name,
+            bookingDate,
+            bookingTime,
+            source: "manual",
+          },
+        };
+      }
+    }
+
+    return { appointment, notification };
   });
+
+  if (result.notification) {
+    try {
+      await createProviderNotification(result.notification);
+    } catch (error) {
+      console.error("Failed to create payment pending notification.", {
+        appointmentId: result.appointment.id,
+        tenantId: result.notification.tenantId,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  }
+
+  return result.appointment;
 }
 
 export async function checkoutAppointment(

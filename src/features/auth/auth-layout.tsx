@@ -6,9 +6,7 @@ import type { ReactNode } from "react";
  * Desktop (lg+): brand panel on the left, auth content on the right.
  * Mobile (<lg): stacked — compact brand at the top, auth content below.
  *
- * The brand panel uses deep green (--sidebar) for depth and trust,
- * consistent with the sidebar identity. The right side uses the
- * off-white page background with a centered white card.
+ * The brand panel uses the Agendaí navy/blue brand field.
  */
 interface AuthLayoutProps {
   brandPanel: ReactNode;
@@ -24,7 +22,7 @@ export function AuthLayout({
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Desktop brand panel */}
-      <div className="hidden lg:flex lg:flex-col lg:justify-center lg:bg-sidebar lg:text-sidebar-foreground lg:px-16 lg:py-12">
+      <div className="hidden bg-brand-navy text-white lg:flex lg:flex-col lg:justify-center lg:px-16 lg:py-12">
         {brandPanel}
       </div>
 

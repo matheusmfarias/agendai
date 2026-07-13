@@ -15,6 +15,12 @@ import { AvailabilityRuleForm } from "@/components/forms/availability-rule-form"
 import { ProviderStatusForm } from "@/components/forms/provider-status-form";
 import { ScheduleBlockForm } from "@/components/forms/schedule-block-form";
 import { PageHeading } from "@/components/layout/page-heading";
+import {
+  MetricCard as ModuleMetricCard,
+  ModulePage,
+  ModuleTabs,
+  ModuleToolbar,
+} from "@/components/layout/module-page";
 import { PanelShell } from "@/components/layout/panel-shell";
 import { SuccessAlert } from "@/components/layout/success-alert";
 import { Badge } from "@/components/ui/badge";
@@ -151,19 +157,7 @@ function MetricCard({
   value: number | string;
   icon: typeof Clock3;
 }) {
-  return (
-    <Card className="border-border/70 bg-card/95 py-2.5 shadow-sm">
-      <CardContent className="flex items-center gap-3 px-3.5">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-          <Icon className="size-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xl font-semibold leading-tight">{value}</p>
-          <p className="truncate text-xs text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  return <ModuleMetricCard label={label} value={value} icon={<Icon className="size-4" />} tone="primary" />;
 }
 
 function TabButton({
@@ -455,7 +449,7 @@ export function ProviderAvailabilityView({
     : "availability";
 
   return (
-    <>
+    <ModulePage>
       <PageHeading
         title="Horários"
         description="Defina atendimento semanal e bloqueios pontuais no mesmo lugar."
@@ -483,7 +477,7 @@ export function ProviderAvailabilityView({
       />
       <SuccessAlert code={success} context={successContext} />
 
-      <div className="mb-4 inline-flex rounded-2xl border border-border bg-card p-1 shadow-sm">
+      <ModuleTabs label="Seções de horários" className="mb-4">
         <TabButton
           active={activeTab === "availability"}
           label="Atendimento"
@@ -494,7 +488,7 @@ export function ProviderAvailabilityView({
           label="Bloqueios"
           onClick={() => navigate(tabHref("blocks"))}
         />
-      </div>
+      </ModuleTabs>
 
       {activeTab === "availability" ? (
         rows.length ? (
@@ -506,7 +500,7 @@ export function ProviderAvailabilityView({
             </div>
 
             <Card className="overflow-hidden border-border/70 bg-card/95 py-0 shadow-sm">
-              <div className="grid gap-3 border-b border-border/70 bg-card p-3 md:grid-cols-[1fr_12rem]">
+              <ModuleToolbar className="grid gap-3 rounded-none border-x-0 border-t-0 shadow-none md:grid-cols-[1fr_12rem]">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -526,7 +520,7 @@ export function ProviderAvailabilityView({
                   <option value="active">Ativos</option>
                   <option value="inactive">Inativos</option>
                 </Select>
-              </div>
+              </ModuleToolbar>
 
               <CardContent className="p-3">
                 <AvailabilityDayGroups
@@ -561,7 +555,7 @@ export function ProviderAvailabilityView({
           </div>
 
           <Card className="overflow-hidden border-border/70 bg-card/95 py-0 shadow-sm">
-            <div className="border-b border-border/70 bg-card p-3">
+            <ModuleToolbar className="rounded-none border-x-0 border-t-0 shadow-none">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -571,7 +565,7 @@ export function ProviderAvailabilityView({
                   className="h-10 rounded-2xl border-border/70 bg-background/70 pl-9 shadow-none"
                 />
               </div>
-            </div>
+            </ModuleToolbar>
             <CardContent className="p-3">
               <ScheduleBlockList
                 blocks={filteredBlocks}
@@ -659,6 +653,6 @@ export function ProviderAvailabilityView({
           />
         </PanelShell>
       ) : null}
-    </>
+    </ModulePage>
   );
 }

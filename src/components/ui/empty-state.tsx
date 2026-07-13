@@ -61,7 +61,7 @@ export function EmptyState({
   return (
     <Card>
       <CardContent className="flex flex-col items-center py-12 text-center">
-        <span className="mb-4 grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
+        <span className="mb-4 grid size-12 place-items-center rounded-md bg-primary-soft text-primary">
           <Icon className="size-6" />
         </span>
         <p className="text-sm font-semibold text-foreground">{title}</p>

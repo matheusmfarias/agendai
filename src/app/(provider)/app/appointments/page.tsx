@@ -81,6 +81,15 @@ function parseViewMode(value: string | undefined): AgendaViewMode {
     : "day";
 }
 
+function isUuid(value: string | undefined) {
+  return Boolean(
+    value &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        value,
+      ),
+  );
+}
+
 function localDate(value: string) {
   return new Date(`${value}T12:00:00-03:00`);
 }
@@ -198,6 +207,9 @@ export default async function AppointmentsPage({
   const storedViewMode = cookieStore.get(AGENDA_VIEW_MODE_COOKIE_NAME)?.value;
   const viewMode = parseViewMode(rawFilters.view ?? storedViewMode);
   const range = appointmentRangeFor(viewMode, selectedDate);
+  const selectedAppointmentId = isUuid(rawFilters.appointmentId)
+    ? rawFilters.appointmentId
+    : undefined;
   const filters = {
     ...parsed,
     startDate: range.startDate,
@@ -217,8 +229,8 @@ export default async function AppointmentsPage({
     listActiveCustomerOptions(context.tenantId),
     listAvailabilityRules(context.tenantId),
     listScheduleBlocks(context.tenantId),
-    rawFilters.appointmentId
-      ? getAppointment(context.tenantId, rawFilters.appointmentId)
+    selectedAppointmentId
+      ? getAppointment(context.tenantId, selectedAppointmentId)
       : Promise.resolve(null),
   ]);
   const selectedScheduleBlock =
@@ -362,6 +374,9 @@ export default async function AppointmentsPage({
                 : null,
             }
           : null
+      }
+      highlightAppointmentId={
+        rawFilters.highlight === "notification" ? selectedAppointmentId : undefined
       }
       selectedScheduleBlock={
         selectedScheduleBlock

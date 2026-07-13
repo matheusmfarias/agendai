@@ -14,6 +14,8 @@ import {
   canCreatePublicAppointmentForTenant,
 } from "@/features/booking-core/tenant-policy";
 import { parseLocalDateTimeInTimezone } from "@/features/booking-core/timezone";
+import { createProviderNotification } from "@/features/provider-notifications/notification-service";
+import type { CreateProviderNotificationInput } from "@/features/provider-notifications/notification-service";
 import { getSubscriptionPolicy } from "@/features/subscriptions/subscription-policy";
 import type { PublicBookingInput } from "@/features/public-booking/public-booking-schemas";
 import { Prisma } from "@/generated/prisma/client";
@@ -29,6 +31,25 @@ export const PUBLIC_BOOKING_MESSAGES = {
   INFORMATIONAL:
     "Sua solicitação foi enviada. O prestador entrará em contato para dar continuidade.",
 } as const;
+
+function notificationDateParts(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const field = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    date: `${field("year")}-${field("month")}-${field("day")}`,
+    time: `${field("hour")}:${field("minute")}`,
+  };
+}
 
 type CustomerUserForPublicBooking = {
   id: string;
@@ -190,7 +211,7 @@ export async function createPublicBooking(
   customerUserId: string,
   ipAddress?: string | null,
 ) {
-  return prisma.$transaction(
+  const result = await prisma.$transaction(
     async (tx) => {
       const tenant = await tx.tenant.findUnique({
         where: { slug: input.tenantSlug },
@@ -274,7 +295,7 @@ export async function createPublicBooking(
         tenant.timezone,
       );
       if (!startsAt) {
-        throw new Error("Selecione um horario valido.");
+        throw new Error("Selecione um horário válido.");
       }
 
       const endsAt = calculateAppointmentEnd(
@@ -376,6 +397,42 @@ export async function createPublicBooking(
         },
       });
 
+      let notification: CreateProviderNotificationInput | null = null;
+      if (status === "CONFIRMED" || status === "REQUESTED") {
+        const { date: bookingDate, time: bookingTime } = notificationDateParts(
+          startsAt,
+          tenant.timezone,
+        );
+        const requiresConfirmation = status === "REQUESTED";
+        const title = requiresConfirmation
+          ? "Agendamento aguardando confirmação"
+          : "Novo agendamento pelo link público";
+        const description = requiresConfirmation
+          ? `${customer.name} solicitou ${service.name} para ${bookingDate} às ${bookingTime}.`
+          : `${customer.name} agendou ${service.name} para ${bookingDate} às ${bookingTime}.`;
+
+        notification = {
+          tenantId: tenant.id,
+          type: requiresConfirmation
+            ? "booking_confirmation_required"
+            : "public_booking_created",
+          priority: requiresConfirmation ? "high" : "medium",
+          title,
+          description,
+          entityType: "appointment",
+          entityId: appointment.id,
+          actionUrl: `/app/appointments?startDate=${bookingDate}&appointmentId=${appointment.id}&highlight=notification`,
+          metadata: {
+            customerName: customer.name,
+            serviceName: service.name,
+            bookingDate,
+            bookingTime,
+            source: "public_link",
+            requiresConfirmation,
+          },
+        };
+      }
+
       if (customValues.rows.length) {
         const appointmentCustomValueClient = (
           tx as unknown as {
@@ -437,10 +494,30 @@ export async function createPublicBooking(
         appointmentId: appointment.id,
         status,
         message: PUBLIC_BOOKING_MESSAGES[service.bookingMode],
+        notification,
       };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
+
+  if (result.notification) {
+    try {
+      await createProviderNotification(result.notification);
+    } catch (error) {
+      console.error("Failed to create provider notification.", {
+        appointmentId: result.appointmentId,
+        tenantId: result.notification.tenantId,
+        type: result.notification.type,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  }
+
+  return {
+    appointmentId: result.appointmentId,
+    status: result.status,
+    message: result.message,
+  };
 }
 
 /**

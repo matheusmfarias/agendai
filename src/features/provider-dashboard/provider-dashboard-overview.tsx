@@ -20,6 +20,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  ContentGrid,
+  MetricCard as ModuleMetricCard,
+  ModulePage,
+} from "@/components/layout/module-page";
 import type { AppointmentStatus } from "@/generated/prisma/client";
 import {
   getProviderDisplayName,
@@ -138,7 +143,7 @@ function statusVariant(status: string) {
 function serviceMeta(appointment: DashboardAppointment) {
   const originLabel =
     appointment.origin === "PUBLIC_LINK"
-      ? "Link publico"
+      ? "Link público"
       : appointment.origin === "WHATSAPP"
         ? "WhatsApp"
         : "Painel";
@@ -179,20 +184,13 @@ function MetricTile({
   icon: React.ReactNode;
 }) {
   return (
-    <Card className="rounded-2xl border-border/80 bg-card shadow-sm">
-      <CardContent className="flex min-h-22 flex-col justify-between">
-        <div className="flex items-start justify-between">
-          <p className="text-sm text-muted-foreground">{title}</p>
-          <span className="text-muted-foreground">{icon}</span>
-        </div>
-        <div>
-          <p className="text-3xl font-semibold leading-none tabular-nums">
-            {value}
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">{caption}</p>
-        </div>
-      </CardContent>
-    </Card>
+    <ModuleMetricCard
+      label={title}
+      value={value}
+      description={caption}
+      icon={icon}
+      tone="primary"
+    />
   );
 }
 
@@ -210,7 +208,7 @@ function QuickActions() {
       icon: <UserPlus className="size-4" />,
     },
     {
-      label: "Bloquear horario",
+      label: "Bloquear horário",
       href: "/app/availability?tab=blocks&panel=block-new",
       icon: <CalendarClock className="size-4" />,
     },
@@ -601,8 +599,8 @@ export function ProviderDashboardOverview({
   const tenantInitials = getProviderLogoFallbackText(tenantName);
 
   return (
-    <div className="mx-auto max-w-[1480px] space-y-4">
-      <header className="flex flex-col gap-3 border-b border-border/80 pb-4 sm:flex-row sm:items-center sm:justify-between">
+    <ModulePage>
+      <header className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div className="flex items-end gap-3">
           {tenant.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -617,8 +615,15 @@ export function ProviderDashboardOverview({
             </div>
           )}
           <div>
-            <p className="text-sm text-muted-foreground">{greeting()}</p>
-            <h1 className="text-xl font-semibold leading-tight">{tenantName}</h1>
+            <p className="text-sm text-muted-foreground">
+              {greeting()} {tenantName}
+            </p>
+            <h1 className="font-display text-2xl font-semibold leading-tight">
+              Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Acompanhe o dia, próximos horários e canais de agendamento.
+            </p>
           </div>
         </div>
         <span className="w-fit rounded-full bg-muted px-4 py-2 text-xs font-medium text-muted-foreground">
@@ -626,7 +631,7 @@ export function ProviderDashboardOverview({
         </span>
       </header>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px] 2xl:grid-cols-[minmax(0,1fr)_280px]">
+      <ContentGrid>
         <main className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <MetricTile
@@ -713,8 +718,8 @@ export function ProviderDashboardOverview({
           />
           <RecentCustomersCard appointments={allUpcoming} />
         </aside>
-      </div>
+      </ContentGrid>
       <DashboardMobileFab />
-    </div>
+    </ModulePage>
   );
 }

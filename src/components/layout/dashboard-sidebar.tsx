@@ -6,7 +6,6 @@ import { useEffect } from "react";
 import {
   Bot,
   Building2,
-  CalendarCheck2,
   CalendarDays,
   ChevronRight,
   CircleDollarSign,
@@ -27,6 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { AgendaiLogo } from "@/components/brand/agendai-logo";
 import { logoutAction } from "@/features/auth/auth-actions";
 import { getProviderLogoFallbackText } from "@/lib/provider-brand";
 import { cn } from "@/lib/utils";
@@ -196,22 +196,16 @@ export function DashboardSidebar({
             "group flex min-w-0 flex-1 items-center gap-3 rounded-2xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/30",
             collapsed && "lg:mx-auto lg:flex-none lg:justify-center",
           )}
-          title="AgendaZap"
+          title="Agendaí"
         >
-          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm transition-transform group-hover:-translate-y-0.5">
-            <CalendarCheck2 className="size-5" />
-          </span>
-          <div
+          <AgendaiLogo
+            size="sm"
+            showText={!collapsed}
             className={cn(
-              "min-w-0 transition-all duration-200",
-              collapsed &&
-                "lg:pointer-events-none lg:w-0 lg:translate-x-2 lg:overflow-hidden lg:opacity-0",
+              "min-w-0 transition-transform group-hover:-translate-y-0.5",
+              collapsed && "lg:justify-center",
             )}
-          >
-            <p className="font-display text-base font-semibold leading-tight tracking-tight">
-              AgendaZap
-            </p>
-          </div>
+          />
         </Link>
 
         {onToggleCollapsed ? (
@@ -295,7 +289,7 @@ export function DashboardSidebar({
                 className={cn(
                   "group flex items-center gap-3 rounded-2xl px-2.5 py-2 text-sm transition-all duration-200",
                   collapsed &&
-                    "lg:mx-auto lg:size-12 lg:justify-center lg:gap-0 lg:px-0 lg:py-0",
+                    "gap-0",
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
@@ -420,7 +414,7 @@ export function DashboardSidebar({
             <div
               className={cn(
                 "flex items-center gap-3",
-                collapsed && "lg:justify-center",
+                collapsed && "lg:justify-center gap-0",
               )}
             >
               {logoUrl ? (
@@ -480,7 +474,7 @@ export function DashboardSidebar({
               <form action={logoutAction} className="shrink-0">
                 <button
                   type="submit"
-                  className="grid size-8 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-background hover:text-primary"
+                  className="grid size-8 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-background hover:text-primary cursor-pointer"
                   title="Sair"
                 >
                   <LogOut className="size-4" />

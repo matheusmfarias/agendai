@@ -57,7 +57,7 @@ export default async function TenantHomePage({
               tenantSlug={tenant.slug}
             />
           ) : (
-            <section className="rounded-3xl border border-dashed border-border bg-card px-6 py-10 text-center">
+            <section className="rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center">
               <p className="text-muted-foreground">
                 Nenhum serviço disponível no momento.
               </p>

@@ -62,7 +62,7 @@ Revisao geral e refatoracao pontual sem alterar schema Prisma, migrations ou reg
 
 ## Observacoes
 
-- Existem textos antigos com mojibake em alguns arquivos, como `LanÃ§amento` e `ServiÃ§o`. A refatoracao evitou uma troca massiva para reduzir risco de alterar textos fora do escopo.
+- Os textos com mojibake foram corrigidos. A refatoração mantém os conteúdos em UTF-8 para evitar regressões de exibição.
 - O comando `git status` nao reconheceu o diretorio atual como worktree valida, apesar de existir uma pasta `.git`. Por isso, este relatorio lista manualmente os principais arquivos alterados.
 - Os maiores arquivos do painel ainda merecem uma segunda rodada de refatoracao, especialmente agenda, financeiro e simulador Typebot. Nesta etapa a prioridade foi corrigir pontos de coesao e UI sem aumentar o risco.
 
