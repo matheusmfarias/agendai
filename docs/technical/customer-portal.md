@@ -89,12 +89,13 @@ Indexes: unique on `appointmentId` (one review per appointment).
 
 ### `src/server/repositories/customer-portal-repository.ts`
 
-All queries are scoped to the authenticated customer's `userId`:
+Appointment queries are scoped to the authenticated customer's ownership in
+`Appointment.customerUserId`:
 
 | Function | Query pattern |
 |---|---|
 | `getCustomerProfile(userId)` | `prisma.user.findUnique({ where: { id: userId }, select: { id, name, email, phone, avatarUrl, avatarFileKey } })` |
-| `listCustomerAppointments(userId)` | `prisma.appointment.findMany({ where: { customer: { userId, isActive: true } }, include: { tenant, service, customer, review }, orderBy: { startsAt: "desc" } })` |
+| `listCustomerAppointments(userId)` | `prisma.appointment.findMany({ where: { customerUserId: userId }, include: { tenant, service, review }, orderBy: { startsAt: "desc" } })` |
 | `getCustomerAppointment(userId, appointmentId)` | Same scope but single record; explicitly omits `internalNotes`, `events`, and audit metadata |
 | `findReviewByAppointment(appointmentId)` | `prisma.appointmentReview.findUnique({ where: { appointmentId } })` |
 | `createAppointmentReview(data)` | `prisma.appointmentReview.create(...)` |
@@ -103,7 +104,9 @@ All queries are scoped to the authenticated customer's `userId`:
 
 ### Data isolation guarantees
 
-- CUSTOMER **only** sees appointments where `customer.userId === userId` and `customer.isActive === true`
+- CUSTOMER **only** sees appointments where `appointment.customerUserId === userId`; `Customer.userId` is not an authorization source
+- The portal intentionally aggregates the authenticated owner's appointments across tenants; every row retains its own `tenantId` and tenant relation
+- The aggregate list does not accept a tenant identifier controlled by the client; tenant scoping is explicit on surfaces that have tenant context, including public confirmation and provider operations
 - Detail queries **never** include `internalNotes`, `appointmentEvents`, or audit metadata
 - Reviews are verified: only the appointment owner can create a review for it
 

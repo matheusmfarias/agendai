@@ -157,6 +157,26 @@ Não pode:
 * Ver dados administrativos
 * Avaliar agendamentos não concluídos
 
+### Ownership de agendamentos do cliente
+
+`Appointment.customerUserId` é a fonte autoritativa para o portal do cliente e
+para a confirmação do link público. Leituras com contexto de tenant combinam
+owner e tenant; a exceção é a listagem agregada global do portal, que consulta
+somente por `customerUserId` e não aceita tenant controlado pelo cliente. A
+confirmação também exige origem `PUBLIC_LINK`.
+
+`Customer` continua sendo o cadastro operacional mantido pelo tenant. Seu
+`userId` pode registrar um vínculo explícito de perfil, mas não autoriza acesso
+a agendamentos e nunca transfere histórico automaticamente. Uma correspondência
+por telefone não comprova identidade: um Customer legado sem proprietário pode
+ser reutilizado operacionalmente em um novo agendamento, cujo ownership fica
+somente em `Appointment.customerUserId`; se o Customer já estiver vinculado a
+outra pessoa, cria-se um cadastro operacional separado sem alterar o existente.
+
+Agendamentos administrativos, Typebot e legados sem proprietário comprovado
+podem manter `customerUserId` nulo. A remoção do User aplica `SET NULL`,
+preservando o histórico operacional e removendo o acesso autenticado.
+
 ### Regras de autorização
 
 A função `requireCustomer()` em `src/features/auth/permissions.ts` protege
@@ -169,7 +189,11 @@ Usuário CUSTOMER → retorna dados da sessão
 ```
 
 As consultas do repositório (`customer-portal-repository.ts`) são isoladas por
-`customer.userId`, garantindo que o cliente veja apenas seus próprios dados.
+`Appointment.customerUserId`. O vínculo opcional `Customer.userId` não participa
+da autorização. A listagem agregada do portal pode consultar globalmente por
+`customerUserId`, pois não aceita um tenant fornecido pelo cliente; detalhes,
+mutações, confirmação pública e superfícies do prestador com contexto de tenant
+sempre combinam ownership ou ID do recurso com o tenant resolvido no servidor.
 
 ---
 

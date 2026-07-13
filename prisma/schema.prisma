@@ -138,7 +138,8 @@ model User {
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   tenantUsers    TenantUser[]
   scheduleBlocks ScheduleBlock[]
-  appointments   Appointment[]
+  createdAppointments Appointment[] @relation("AppointmentCreatedBy")
+  ownedAppointments   Appointment[] @relation("AppointmentCustomerOwner")
   customerProfiles Customer[]
   appointmentReviews AppointmentReview[]
   providerNotifications ProviderNotification[]
@@ -213,6 +214,7 @@ model Tenant {
   providerNotifications ProviderNotification[]
   providerNotificationPreferences ProviderNotificationPreference[]
 
+  @@index([documentNumber], map: "tenants_document_number_idx")
   @@map("tenants")
 }
 
@@ -425,6 +427,7 @@ model Appointment {
   id              String             @id @default(uuid()) @db.Uuid
   tenantId        String             @map("tenant_id") @db.Uuid
   customerId      String             @map("customer_id") @db.Uuid
+  customerUserId  String?            @map("customer_user_id") @db.Uuid
   serviceId       String             @map("service_id") @db.Uuid
   origin          AppointmentOrigin
   status          AppointmentStatus
@@ -440,7 +443,8 @@ model Appointment {
   tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
   service         Service            @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  createdBy       User?              @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  customerUser    User?              @relation("AppointmentCustomerOwner", fields: [customerUserId], references: [id], onDelete: SetNull)
+  createdBy       User?              @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   events          AppointmentEvent[]
   customValues    AppointmentCustomValue[]
   review          AppointmentReview?
@@ -448,6 +452,7 @@ model Appointment {
 
   @@index([tenantId])
   @@index([tenantId, startsAt])
+  @@index([tenantId, customerUserId], map: "appointments_tenant_id_customer_user_id_idx")
   @@index([customerId])
   @@index([serviceId])
   @@index([status])

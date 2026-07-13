@@ -16,6 +16,52 @@ ORM oficial:
 Prisma ORM
 ```
 
+## Ownership autenticado de agendamentos
+
+O cadastro `Customer` pertence ao tenant e representa a pessoa no contexto
+operacional do negócio. Ele não é uma credencial de acesso ao portal.
+
+`Appointment.customer_user_id` é nullable e referencia `users.id` com
+`ON DELETE SET NULL`. Quando preenchido, identifica exclusivamente o CUSTOMER
+autenticado autorizado a consultar aquele agendamento. O índice
+`(tenant_id, customer_user_id)` atende consultas isoladas por tenant e owner.
+Agendamentos manuais, Typebot e registros legados sem vínculo comprovado
+permanecem nulos.
+
+O backfill usa apenas o vínculo explícito já persistido em `customers.user_id`,
+exige que Customer e Appointment pertençam ao mesmo tenant e conserva ownership
+somente quando o User possui role global `CUSTOMER`. Telefone e e-mail não
+participam da atribuição de ownership. A migration de ownership preenche apenas
+appointments `PUBLIC_LINK` com um único
+owner evidenciado por evento `CUSTOMER` do próprio appointment e tenant, role
+global `CUSTOMER` e vínculo atual coincidente em `Customer.userId`. Evidência
+ausente, órfã ou conflitante permanece nula sem remover o histórico operacional.
+
+### Gate pré-deploy da migration consolidada
+
+Antes do deploy, execute a consulta read-only abaixo em **cada ambiente**:
+
+```sql
+SELECT
+  migration_name,
+  checksum,
+  started_at,
+  finished_at,
+  rolled_back_at,
+  applied_steps_count
+FROM _prisma_migrations
+WHERE migration_name IN (
+  '20260713120000_add_appointment_customer_owner',
+  '20260713133000_restrict_appointment_owner_to_customer',
+  '20260713150000_rebuild_proven_appointment_ownership'
+);
+```
+
+Qualquer linha retornada — migration aplicada, falha ou marcada como rolled back
+— bloqueia a publicação da história consolidada e exige uma estratégia
+forward-only específica para o ambiente. Não use `prisma migrate resolve`,
+`prisma migrate reset` nem edite manualmente o ledger `_prisma_migrations`.
+
 Prisma ORM será usado para acesso type-safe ao PostgreSQL. A documentação oficial do Prisma descreve suporte ao conector PostgreSQL e uso do Prisma ORM em aplicações TypeScript/Node.js.
 
 ---

@@ -19,13 +19,16 @@ export function getCustomerProfile(userId: string) {
 }
 
 /**
- * Lists all appointments belonging to a customer (via Customer.userId).
+ * Lists appointments owned by the authenticated customer account.
+ *
+ * Appointment.customerUserId is the sole authorization source. The related
+ * Customer is an operational tenant record and must not grant portal access.
  * Ordered by startsAt descending — next appointments first.
  */
 export function listCustomerAppointments(userId: string) {
   return prisma.appointment.findMany({
     where: {
-      customer: { userId, isActive: true },
+      customerUserId: userId,
     },
     orderBy: { startsAt: "desc" },
     include: {
@@ -51,7 +54,6 @@ export function listCustomerAppointments(userId: string) {
           category: { select: { isActive: true } },
         },
       },
-      customer: { select: { id: true, name: true } },
       review: { select: { id: true, rating: true, comment: true, createdAt: true } },
     },
   });
@@ -59,13 +61,14 @@ export function listCustomerAppointments(userId: string) {
 
 /**
  * Returns a single appointment owned by the customer, with full detail safe for display.
+ * Ownership comes only from Appointment.customerUserId.
  * Excludes internalNotes, appointment events, and administrative metadata.
  */
 export function getCustomerAppointment(userId: string, appointmentId: string) {
   return prisma.appointment.findFirst({
     where: {
       id: appointmentId,
-      customer: { userId, isActive: true },
+      customerUserId: userId,
     },
     include: {
       tenant: {
@@ -92,7 +95,6 @@ export function getCustomerAppointment(userId: string, appointmentId: string) {
           category: { select: { name: true, isActive: true } },
         },
       },
-      customer: { select: { id: true, name: true, phone: true, email: true } },
       customValues: {
         include: { customField: { select: { label: true } } },
         orderBy: { createdAt: "asc" },

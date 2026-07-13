@@ -94,13 +94,15 @@ Nunca use os valores de exemplo em produção.
 - `/[tenantSlug]/services`, listagem de serviços por categoria
 - `/[tenantSlug]/book`, formulário de agendamento com autenticação de cliente
   final
-- `/[tenantSlug]/book/confirm`, confirmação de agendamento recebido
+- `/[tenantSlug]/book/confirm`, confirmação do agendamento para o CUSTOMER
+  autenticado que o criou
 - `/access-denied`
 
-As rotas públicas (`/[tenantSlug]`, `/services`, `/book`, `/book/confirm`) são
-páginas reais do App Router no route group `(public)/[tenantSlug]`. Elas são
-acessíveis sem autenticação, mas a conclusão de um agendamento exige login ou
-criação de conta de cliente final (`CUSTOMER`).
+As rotas de catálogo e escolha (`/[tenantSlug]`, `/services`, `/book`) são
+páginas públicas reais do App Router no route group `(public)/[tenantSlug]`.
+A conclusão e a confirmação em `/book/confirm` exigem login de cliente final
+(`CUSTOMER`); a confirmação valida o proprietário gravado no agendamento, e o
+`appointmentId` não funciona como credencial de acesso.
 
 ### Cliente final (`CUSTOMER`)
 

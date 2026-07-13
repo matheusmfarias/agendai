@@ -20,6 +20,13 @@ export function validateCustomFields(
 ) {
   const fieldErrors: Record<string, string[]> = {};
   const rows: { customFieldId: string; value: string }[] = [];
+  const allowedKeys = new Set(fields.map((field) => `custom_${field.id}`));
+
+  for (const key of Object.keys(values)) {
+    if (key.startsWith("custom_") && !allowedKeys.has(key)) {
+      fieldErrors[key] = ["Campo personalizado inválido."];
+    }
+  }
 
   for (const field of fields) {
     const key = `custom_${field.id}`;

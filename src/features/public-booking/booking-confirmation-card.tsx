@@ -55,7 +55,7 @@ interface BookingConfirmationCardProps {
     customerNotes: string | null;
     tenant: { name: string; publicDisplayName?: string | null; slug: string };
     service: { name: string; bookingMode: BookingMode };
-    customer: { name: string };
+    customerUser: { name: string } | null;
     customValues: ConfirmationCustomValue[];
   };
 }
@@ -124,7 +124,7 @@ export function BookingConfirmationCard({
             <div>
               <dt className="text-muted-foreground">Cliente</dt>
               <dd className="font-medium text-foreground">
-                {appointment.customer.name}
+                {appointment.customerUser?.name ?? "Cliente"}
               </dd>
             </div>
           </dl>

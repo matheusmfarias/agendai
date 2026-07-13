@@ -60,6 +60,7 @@ type CustomerUserForPublicBooking = {
 type TenantCustomerForPublicBooking = {
   id: string;
   name: string;
+  userId: string | null;
 };
 
 export type PublicReviewSummary = Awaited<
@@ -350,16 +351,18 @@ export async function createPublicBooking(
           userId: customerUser.id,
         },
       });
-      const existingCustomerByPhone = existingCustomerByUser
+      // An operational Customer can predate authenticated customer accounts.
+      // A phone match is useful for scheduling, but is not proof of ownership:
+      // never attach or transfer Customer.userId based on that match.
+      const unownedCustomerByPhone = existingCustomerByUser
         ? null
         : await findCustomer({
             where: {
               tenantId: tenant.id,
+              userId: null,
               OR: [{ phone }, { phone: customerUser.phone?.trim() ?? phone }],
             },
           });
-      const existingCustomer =
-        existingCustomerByUser ?? existingCustomerByPhone;
       const customerData = {
         userId: customerUser.id,
         name: customerUser.name,
@@ -367,11 +370,13 @@ export async function createPublicBooking(
         email: customerUser.email,
         isActive: true,
       };
-      const customer = existingCustomer
+      const customer = existingCustomerByUser
         ? await updateCustomer({
-            where: { id: existingCustomer.id },
+            where: { id: existingCustomerByUser.id },
             data: customerData,
           })
+        : unownedCustomerByPhone
+          ? unownedCustomerByPhone
         : await createCustomer({
             data: {
               tenantId: tenant.id,
@@ -387,6 +392,7 @@ export async function createPublicBooking(
         data: {
           tenant: { connect: { id: tenant.id } },
           customer: { connect: { id: customer.id } },
+          customerUser: { connect: { id: customerUser.id } },
           service: { connect: { id: service.id } },
           origin: "PUBLIC_LINK",
           status,
@@ -536,12 +542,24 @@ export async function getPublicTenantNameForHeader(slug: string) {
 export async function getPublicBookingConfirmation(
   slug: string,
   appointmentId: string,
+  customerUserId: string,
 ) {
+  const tenant = await prisma.tenant.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
+  if (!tenant) return null;
+
   return prisma.appointment.findFirst({
-    where: { id: appointmentId, tenant: { slug } },
+    where: {
+      id: appointmentId,
+      tenantId: tenant.id,
+      customerUserId,
+      origin: "PUBLIC_LINK",
+    },
     include: {
       tenant: { select: { name: true, publicDisplayName: true, slug: true } },
-      customer: { select: { name: true } },
+      customerUser: { select: { name: true } },
       service: { select: { name: true, bookingMode: true } },
       customValues: {
         include: {

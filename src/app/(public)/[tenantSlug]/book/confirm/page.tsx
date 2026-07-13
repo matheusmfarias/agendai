@@ -1,9 +1,12 @@
 import {
   getPublicBookingConfirmation,
 } from "@/features/public-booking/public-booking-service";
+import { publicBookingConfirmationSchema } from "@/features/public-booking/public-booking-schemas";
+import { getCurrentUser } from "@/features/auth/permissions";
 import { BookingConfirmationCard } from "@/features/public-booking/booking-confirmation-card";
 import { PublicShell } from "@/features/public-booking/public-shell";
 import { PublicUnavailablePage } from "@/features/public-booking/public-unavailable";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Agendamento confirmado",
@@ -19,13 +22,27 @@ export default async function TenantBookConfirmPage({
   const { tenantSlug } = await params;
   const { appointmentId } = await searchParams;
 
-  if (!appointmentId) {
+  const parsed = publicBookingConfirmationSchema.safeParse({
+    tenantSlug,
+    appointmentId,
+  });
+  if (!parsed.success) {
+    return <PublicUnavailablePage />;
+  }
+
+  const user = await getCurrentUser();
+  if (!user) {
+    const returnTo = `/${tenantSlug}/book/confirm?appointmentId=${appointmentId}`;
+    redirect(`/login?redirectTo=${encodeURIComponent(returnTo)}`);
+  }
+  if (String(user.globalRole) !== "CUSTOMER") {
     return <PublicUnavailablePage />;
   }
 
   const appointment = await getPublicBookingConfirmation(
-    tenantSlug,
-    appointmentId,
+    parsed.data.tenantSlug,
+    parsed.data.appointmentId,
+    user.id,
   );
 
   if (!appointment) {

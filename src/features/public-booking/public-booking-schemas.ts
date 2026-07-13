@@ -14,3 +14,8 @@ export const publicBookingSchema = z.object({
 });
 
 export type PublicBookingInput = z.infer<typeof publicBookingSchema>;
+
+export const publicBookingConfirmationSchema = z.object({
+  tenantSlug: z.string().trim().min(1),
+  appointmentId: z.string().uuid(),
+});
