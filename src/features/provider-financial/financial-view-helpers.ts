@@ -38,17 +38,17 @@ export const SHOW_DEV_STATE_SWITCHER = false;
 
 export const TABS: Array<{ value: FinancialTab; label: string }> = [
   { value: "summary", label: "Resumo" },
-  { value: "transactions", label: "Lancamentos" },
-  { value: "pending", label: "Pendencias" },
-  { value: "reports", label: "Relatorios" },
+  { value: "transactions", label: "Lançamentos" },
+  { value: "pending", label: "Pendências" },
+  { value: "reports", label: "Relatórios" },
 ];
 
 export const PERIOD_LABELS: Record<FinancialPeriodKey, string> = {
   today: "Hoje",
   "7d": "7 dias",
   "30d": "30 dias",
-  "this-month": "Este mes",
-  "last-month": "Mes passado",
+  "this-month": "Este mês",
+  "last-month": "Mês passado",
   custom: "Personalizado",
 };
 

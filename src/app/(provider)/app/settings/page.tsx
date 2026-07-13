@@ -1,5 +1,4 @@
 import { ProviderSettingsForm } from "@/components/forms/provider-settings-form";
-import { NotificationSoundSettings } from "@/features/provider-notifications/components/provider-notification-center";
 import { PageHeading } from "@/components/layout/page-heading";
 import { ModulePage } from "@/components/layout/module-page";
 import { SuccessAlert } from "@/components/layout/success-alert";
@@ -17,6 +16,7 @@ export default async function SettingsPage({
   const context = await requireProviderManager();
   const tenant = await getProviderSettings(context.tenantId);
   const { success } = await searchParams;
+
   if (!tenant) return null;
 
   return (
@@ -25,7 +25,9 @@ export default async function SettingsPage({
         title="Configurações do negócio"
         description="Centralize perfil público, regras de agendamento, comunicação e dados da conta."
       />
+
       <SuccessAlert code={success} context="settings" />
+
       <ProviderSettingsForm
         action={updateProviderSettingsAction}
         tenantSlug={tenant.slug}
@@ -34,9 +36,11 @@ export default async function SettingsPage({
           tenant.subscription
             ? {
                 status: tenant.subscription.status,
-                expiresAt: tenant.subscription.expiresAt?.toISOString() ?? null,
+                expiresAt:
+                  tenant.subscription.expiresAt?.toISOString() ?? null,
                 planName: tenant.subscription.plan.name,
-                publicLinkEnabled: tenant.subscription.plan.publicLinkEnabled,
+                publicLinkEnabled:
+                  tenant.subscription.plan.publicLinkEnabled,
                 whatsappEnabled: tenant.subscription.plan.whatsappEnabled,
               }
             : null
@@ -76,22 +80,27 @@ export default async function SettingsPage({
           currency: "BRL",
           weekStartsOn: tenant.weekStartsOn,
           timeFormat: tenant.timeFormat === "12H" ? "12H" : "24H",
-          defaultAppointmentDuration: tenant.defaultAppointmentDuration,
+          defaultAppointmentDuration:
+            tenant.defaultAppointmentDuration,
           defaultSlotInterval: tenant.defaultSlotInterval,
           minBookingNoticeMinutes: tenant.minBookingNoticeMinutes,
           maxBookingAdvanceDays: tenant.maxBookingAdvanceDays,
-          allowCustomerCancellation: tenant.allowCustomerCancellation,
-          allowCustomerRescheduling: tenant.allowCustomerRescheduling,
+          allowCustomerCancellation:
+            tenant.allowCustomerCancellation,
+          allowCustomerRescheduling:
+            tenant.allowCustomerRescheduling,
           cancellationNoticeHours: tenant.cancellationNoticeHours,
-          confirmationMessageTemplate: tenant.confirmationMessageTemplate,
+          confirmationMessageTemplate:
+            tenant.confirmationMessageTemplate,
           reminderMessageTemplate: tenant.reminderMessageTemplate,
-          cancellationMessageTemplate: tenant.cancellationMessageTemplate,
-          enableAutomaticReminders: tenant.enableAutomaticReminders,
+          cancellationMessageTemplate:
+            tenant.cancellationMessageTemplate,
+          enableAutomaticReminders:
+            tenant.enableAutomaticReminders,
           reminderLeadHours: tenant.reminderLeadHours,
           description: tenant.description ?? "",
         }}
       />
-      <NotificationSoundSettings />
     </ModulePage>
   );
 }

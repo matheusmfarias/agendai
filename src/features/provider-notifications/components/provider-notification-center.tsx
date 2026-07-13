@@ -66,7 +66,8 @@ type NotificationCenterContextValue = {
   testSound: () => Promise<boolean>;
 };
 
-const NotificationCenterContext = createContext<NotificationCenterContextValue | null>(null);
+const NotificationCenterContext =
+  createContext<NotificationCenterContextValue | null>(null);
 
 function relativeTime(value: string) {
   const seconds = Math.max(
@@ -87,9 +88,19 @@ function relativeTime(value: string) {
 function notificationDateGroup(value: string) {
   const date = new Date(value);
   const today = new Date();
-  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const days = Math.round((startToday.getTime() - startDate.getTime()) / 86_400_000);
+  const startToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const startDate = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
+  const days = Math.round(
+    (startToday.getTime() - startDate.getTime()) / 86_400_000,
+  );
   if (days === 0) return "Hoje";
   if (days === 1) return "Ontem";
   return "Anteriores";
@@ -106,15 +117,21 @@ function notificationGroup(notification: ProviderNotification) {
   if (
     notification.type === "payment_pending" ||
     notification.type === "payment_received"
-  ) return "financial";
+  )
+    return "financial";
   if (
     notification.type === "business_setup_incomplete" ||
     notification.type === "system"
-  ) return "system";
+  )
+    return "system";
   return "bookings";
 }
 
-function NotificationTypeIcon({ notification }: { notification: ProviderNotification }) {
+function NotificationTypeIcon({
+  notification,
+}: {
+  notification: ProviderNotification;
+}) {
   if (notificationGroup(notification) === "financial") {
     return <CircleDollarSign className="size-4" aria-hidden="true" />;
   }
@@ -167,9 +184,10 @@ export function ProviderNotificationCenter({
   const [showSoundPrompt, setShowSoundPrompt] = useState(false);
   const [agendaHighlightVisible, setAgendaHighlightVisible] = useState(false);
   const [soundFeedback, setSoundFeedback] = useState<string | null>(null);
-  const [preferences, setPreferences] = useState<ProviderNotificationPreferences>(
-    DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
-  );
+  const [preferences, setPreferences] =
+    useState<ProviderNotificationPreferences>(
+      DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
+    );
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const seenIds = useRef(new Set<string>());
   const initialLoadComplete = useRef(false);
@@ -187,9 +205,9 @@ export function ProviderNotificationCenter({
   const loadedPageCountRef = useRef(1);
   const filterInitializedRef = useRef(false);
   const statusFilterRef = useRef<"all" | "unread">("all");
-  const categoryFilterRef = useRef<
-    "all" | "bookings" | "financial" | "system"
-  >("all");
+  const categoryFilterRef = useRef<"all" | "bookings" | "financial" | "system">(
+    "all",
+  );
   const preferencePatchQueueRef = useRef<ReturnType<
     typeof createProviderNotificationPreferenceQueue
   > | null>(null);
@@ -201,7 +219,9 @@ export function ProviderNotificationCenter({
   const temporaryTitleActive = useRef(false);
   const titleTimer = useRef<number | null>(null);
   const agendaHighlightTimer = useRef<number | null>(null);
-  const coordinatorRef = useRef<ReturnType<typeof createProviderNotificationCoordinator> | null>(null);
+  const coordinatorRef = useRef<ReturnType<
+    typeof createProviderNotificationCoordinator
+  > | null>(null);
   const drawerRef = useRef<HTMLElement | null>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const soundPromptDismissedKey = `${SOUND_PROMPT_DISMISSED_KEY}:${tenantId}:${userId}`;
@@ -224,7 +244,9 @@ export function ProviderNotificationCenter({
     const audio = new Audio("/sounds/new-booking.mp3");
     audio.volume = 0.35;
     void audio.play().catch(() => {
-      setSoundFeedback("O navegador bloqueou o som. Interaja com a página e tente novamente.");
+      setSoundFeedback(
+        "O navegador bloqueou o som. Interaja com a página e tente novamente.",
+      );
     });
   }, []);
 
@@ -268,10 +290,7 @@ export function ProviderNotificationCenter({
   }, [applyPreferences]);
 
   const updatePreference = useCallback(
-    (
-      key: keyof ProviderNotificationPreferences,
-      value: boolean,
-    ) => {
+    (key: keyof ProviderNotificationPreferences, value: boolean) => {
       preferencePatchQueueRef.current ??=
         createProviderNotificationPreferenceQueue({
           getCurrent: () => preferencesRef.current,
@@ -314,121 +333,127 @@ export function ProviderNotificationCenter({
     }, 5000);
   }, [applyCountTitle]);
 
-  const loadNotifications = useCallback(async (allowAlerts: boolean) => {
-    if (requestInFlight.current) {
-      const pending = mergePendingProviderNotificationPoll(
-        {
-          pending: pendingPollRef.current,
-          allowAlerts: pendingPollAllowAlertsRef.current,
-        },
-        allowAlerts,
-      );
-      pendingPollRef.current = pending.pending;
-      pendingPollAllowAlertsRef.current = pending.allowAlerts;
-      return;
-    }
-    requestInFlight.current = true;
-
-    try {
-      const response = await fetch("/api/provider/notifications?limit=20", {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        setLoadError(true);
-        setLoaded(true);
+  const loadNotifications = useCallback(
+    async (allowAlerts: boolean) => {
+      if (requestInFlight.current) {
+        const pending = mergePendingProviderNotificationPoll(
+          {
+            pending: pendingPollRef.current,
+            allowAlerts: pendingPollAllowAlertsRef.current,
+          },
+          allowAlerts,
+        );
+        pendingPollRef.current = pending.pending;
+        pendingPollAllowAlertsRef.current = pending.allowAlerts;
         return;
       }
+      requestInFlight.current = true;
 
-      const payload = (await response.json()) as ProviderNotificationsResponse;
-      const observation = observeProviderNotificationPoll({
-        ids: payload.notifications.map(({ id }) => id),
-        seenIds: seenIds.current,
-        baselineEstablished: initialLoadComplete.current,
-        allowAlerts,
-      });
-      initialLoadComplete.current = observation.baselineEstablished;
-      const freshIds = new Set(observation.freshIds);
-      const fresh = payload.notifications.filter(({ id }) => freshIds.has(id));
+      try {
+        const response = await fetch("/api/provider/notifications?limit=20", {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          setLoadError(true);
+          setLoaded(true);
+          return;
+        }
 
-      if (allowAlerts && initialLoadComplete.current && fresh.length) {
-        const newest = fresh.find(
-          (notification) =>
-            providerNotificationAlertDecision(
-              notification,
+        const payload =
+          (await response.json()) as ProviderNotificationsResponse;
+        const observation = observeProviderNotificationPoll({
+          ids: payload.notifications.map(({ id }) => id),
+          seenIds: seenIds.current,
+          baselineEstablished: initialLoadComplete.current,
+          allowAlerts,
+        });
+        initialLoadComplete.current = observation.baselineEstablished;
+        const freshIds = new Set(observation.freshIds);
+        const fresh = payload.notifications.filter(({ id }) =>
+          freshIds.has(id),
+        );
+
+        if (allowAlerts && initialLoadComplete.current && fresh.length) {
+          const newest = fresh.find(
+            (notification) =>
+              providerNotificationAlertDecision(
+                notification,
+                preferencesRef.current,
+                false,
+              ).toast,
+          );
+          if (newest) {
+            setToast(newest);
+            const decision = providerNotificationAlertDecision(
+              newest,
               preferencesRef.current,
               false,
-            ).toast,
-        );
-        if (newest) {
-          setToast(newest);
-          const decision = providerNotificationAlertDecision(
-            newest,
-            preferencesRef.current,
-            false,
-          );
-          if (isBookingNotification(newest)) {
-            if (decision.sound) playSound();
-            showTemporaryBookingTitle();
-            if (pathnameRef.current.startsWith("/app/appointments")) {
-              router.refresh();
-              if (newest.metadata?.bookingDate === currentDateRef.current) {
-                setAgendaHighlightVisible(true);
-                if (agendaHighlightTimer.current) {
-                  window.clearTimeout(agendaHighlightTimer.current);
+            );
+            if (isBookingNotification(newest)) {
+              if (decision.sound) playSound();
+              showTemporaryBookingTitle();
+              if (pathnameRef.current.startsWith("/app/appointments")) {
+                router.refresh();
+                if (newest.metadata?.bookingDate === currentDateRef.current) {
+                  setAgendaHighlightVisible(true);
+                  if (agendaHighlightTimer.current) {
+                    window.clearTimeout(agendaHighlightTimer.current);
+                  }
+                  agendaHighlightTimer.current = window.setTimeout(
+                    () => setAgendaHighlightVisible(false),
+                    6000,
+                  );
                 }
-                agendaHighlightTimer.current = window.setTimeout(
-                  () => setAgendaHighlightVisible(false),
-                  6000,
-                );
               }
             }
           }
         }
-      }
 
-      unreadCountRef.current = payload.unreadCount;
-      setUnreadCount(payload.unreadCount);
-      if (
-        statusFilterRef.current === "all" &&
-        categoryFilterRef.current === "all"
-      ) {
-        setLoadError(false);
-        setNotifications((current) => {
-          const merged = mergeProviderNotificationPages(
-            payload.notifications,
-            current,
+        unreadCountRef.current = payload.unreadCount;
+        setUnreadCount(payload.unreadCount);
+        if (
+          statusFilterRef.current === "all" &&
+          categoryFilterRef.current === "all"
+        ) {
+          setLoadError(false);
+          setNotifications((current) => {
+            const merged = mergeProviderNotificationPages(
+              payload.notifications,
+              current,
+            );
+            unreadIdsRef.current = unreadNotificationIds(merged);
+            return merged;
+          });
+          if (!loadedAdditionalPagesRef.current) {
+            setNextCursor(payload.nextCursor);
+          }
+        }
+        if (allowAlerts && fresh.length) {
+          coordinatorRef.current?.publish({
+            type: "invalidate",
+            reason: "notifications",
+          });
+        }
+        setLoaded(true);
+      } catch {
+        setLoadError(true);
+        setLoaded(true);
+        // A próxima execução do polling refaz a tentativa sem interromper o painel.
+      } finally {
+        requestInFlight.current = false;
+        if (pendingPollRef.current) {
+          const pendingAllowAlerts = pendingPollAllowAlertsRef.current;
+          pendingPollRef.current = false;
+          pendingPollAllowAlertsRef.current = false;
+          window.setTimeout(
+            () => void loadNotificationsRef.current?.(pendingAllowAlerts),
+            0,
           );
-          unreadIdsRef.current = unreadNotificationIds(merged);
-          return merged;
-        });
-        if (!loadedAdditionalPagesRef.current) {
-          setNextCursor(payload.nextCursor);
         }
       }
-      if (allowAlerts && fresh.length) {
-        coordinatorRef.current?.publish({
-          type: "invalidate",
-          reason: "notifications",
-        });
-      }
-      setLoaded(true);
-    } catch {
-      setLoadError(true);
-      setLoaded(true);
-      // A próxima execução do polling refaz a tentativa sem interromper o painel.
-    } finally {
-      requestInFlight.current = false;
-      if (pendingPollRef.current) {
-        const pendingAllowAlerts = pendingPollAllowAlertsRef.current;
-        pendingPollRef.current = false;
-        pendingPollAllowAlertsRef.current = false;
-        window.setTimeout(
-          () => void loadNotificationsRef.current?.(pendingAllowAlerts),
-          0,
-        );
-      }
-    }
-  }, [playSound, router, showTemporaryBookingTitle]);
+    },
+    [playSound, router, showTemporaryBookingTitle],
+  );
   useEffect(() => {
     loadNotificationsRef.current = loadNotifications;
     return () => {
@@ -466,7 +491,8 @@ export function ProviderNotificationCenter({
           { cache: "no-store" },
         );
         if (!response.ok) throw new Error("notification_page_failed");
-        const payload = (await response.json()) as ProviderNotificationsResponse;
+        const payload =
+          (await response.json()) as ProviderNotificationsResponse;
         if (requestId !== listRequestIdRef.current) return;
         setNotifications((current) => {
           if (!append) {
@@ -530,7 +556,8 @@ export function ProviderNotificationCenter({
             { cache: "no-store" },
           );
           if (!response.ok) throw new Error("notification_refresh_failed");
-          const payload = (await response.json()) as ProviderNotificationsResponse;
+          const payload =
+            (await response.json()) as ProviderNotificationsResponse;
           if (requestId !== listRequestIdRef.current) return;
           refreshed.push(...payload.notifications);
           unreadCount = payload.unreadCount;
@@ -584,13 +611,22 @@ export function ProviderNotificationCenter({
         });
       }
     }
-    const coordinator = createProviderNotificationCoordinator({ tenantId, userId }, synchronize);
+    const coordinator = createProviderNotificationCoordinator(
+      { tenantId, userId },
+      synchronize,
+    );
     coordinatorRef.current = coordinator;
     return () => {
       coordinator.close();
       coordinatorRef.current = null;
     };
-  }, [loadNotifications, refreshLoadedNotificationPages, refreshPreferences, tenantId, userId]);
+  }, [
+    loadNotifications,
+    refreshLoadedNotificationPages,
+    refreshPreferences,
+    tenantId,
+    userId,
+  ]);
 
   useEffect(() => {
     baseTitle.current = getBaseTitle(document.title);
@@ -613,7 +649,8 @@ export function ProviderNotificationCenter({
       if (
         document.visibilityState === "visible" &&
         (coordinatorRef.current?.isLeader() ?? true)
-      ) void pollAsVisibleLeader();
+      )
+        void pollAsVisibleLeader();
     }, POLLING_INTERVAL_MS);
     const onFocus = () => {
       if (coordinatorRef.current?.isLeader() ?? true) {
@@ -633,7 +670,12 @@ export function ProviderNotificationCenter({
       temporaryTitleActive.current = false;
       if (baseTitle.current) document.title = baseTitle.current;
     };
-  }, [loadNotifications, pollAsVisibleLeader, refreshPreferences, soundPromptDismissedKey]);
+  }, [
+    loadNotifications,
+    pollAsVisibleLeader,
+    refreshPreferences,
+    soundPromptDismissedKey,
+  ]);
 
   useEffect(() => {
     unreadCountRef.current = unreadCount;
@@ -721,7 +763,10 @@ export function ProviderNotificationCenter({
 
   useEffect(() => {
     if (!toast) return;
-    const timeoutId = window.setTimeout(() => setToast(null), TOAST_DURATION_MS);
+    const timeoutId = window.setTimeout(
+      () => setToast(null),
+      TOAST_DURATION_MS,
+    );
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
@@ -832,7 +877,9 @@ export function ProviderNotificationCenter({
       }}
     >
       {children}
-      <p className="sr-only" aria-live="polite">{soundFeedback}</p>
+      <p className="sr-only" aria-live="polite">
+        {soundFeedback}
+      </p>
 
       {agendaHighlightVisible && pathname.startsWith("/app/appointments") ? (
         <div className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-xl border border-primary/25 bg-primary-soft px-4 py-2 text-sm font-medium text-primary shadow-card">
@@ -870,7 +917,8 @@ export function ProviderNotificationCenter({
                   onClick={() => void openNotification(toast)}
                   className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 >
-                  {notificationActionLabel(toast)} <ChevronRight className="size-4" />
+                  {notificationActionLabel(toast)}{" "}
+                  <ChevronRight className="size-4" />
                 </button>
               ) : null}
             </div>
@@ -895,7 +943,8 @@ export function ProviderNotificationCenter({
             <div>
               <p className="font-semibold">Ativar alertas sonoros?</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Receba um aviso quando um novo agendamento chegar pelo link público.
+                Receba um aviso quando um novo agendamento chegar pelo link
+                público.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
@@ -1082,98 +1131,117 @@ export function ProviderNotificationCenter({
               {loadError && !notifications.length ? (
                 <div className="px-8 py-12 text-center" role="alert">
                   <p className="font-semibold">Não foi possível carregar</p>
-                  <Button className="mt-3" size="sm" variant="outline" onClick={() => void loadNotifications(false)}>
+                  <Button
+                    className="mt-3"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void loadNotifications(false)}
+                  >
                     Tentar novamente
                   </Button>
                 </div>
               ) : null}
               {visibleNotifications.map((notification, index) => (
                 <Fragment key={notification.id}>
-                {index === 0 || notificationDateGroup(notification.createdAt) !==
-                notificationDateGroup(visibleNotifications[index - 1]?.createdAt ?? "") ? (
-                  <p className="border-b border-border bg-muted/30 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {notificationDateGroup(notification.createdAt)}
-                  </p>
-                ) : null}
-                <div
-                  onClick={() => {
-                    if (notification.actionUrl) {
-                      void openNotification(notification);
-                    } else if (!notification.readAt) {
-                      void markRead(notification.id);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (
-                      (notification.actionUrl || !notification.readAt) &&
-                      (event.key === "Enter" || event.key === " ")
-                    ) {
-                      event.preventDefault();
+                  {index === 0 ||
+                  notificationDateGroup(notification.createdAt) !==
+                    notificationDateGroup(
+                      visibleNotifications[index - 1]?.createdAt ?? "",
+                    ) ? (
+                    <p className="border-b border-border bg-muted/30 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {notificationDateGroup(notification.createdAt)}
+                    </p>
+                  ) : null}
+                  <div
+                    onClick={() => {
                       if (notification.actionUrl) {
                         void openNotification(notification);
-                      } else {
+                      } else if (!notification.readAt) {
                         void markRead(notification.id);
                       }
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        (notification.actionUrl || !notification.readAt) &&
+                        (event.key === "Enter" || event.key === " ")
+                      ) {
+                        event.preventDefault();
+                        if (notification.actionUrl) {
+                          void openNotification(notification);
+                        } else {
+                          void markRead(notification.id);
+                        }
+                      }
+                    }}
+                    role={
+                      notification.actionUrl || !notification.readAt
+                        ? "button"
+                        : undefined
                     }
-                  }}
-                  role={
-                    notification.actionUrl || !notification.readAt
-                      ? "button"
-                      : undefined
-                  }
-                  tabIndex={
-                    notification.actionUrl || !notification.readAt
-                      ? 0
-                      : undefined
-                  }
-                  className={cn(
-                    "border-b border-border px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30",
-                    !notification.readAt && "bg-primary/[0.035]",
-                    (notification.actionUrl || !notification.readAt) &&
-                      "cursor-pointer hover:bg-muted/60",
-                  )}
-                >
-                  <div className="flex gap-3">
-                    <span
-                      className={cn(
-                        "mt-1.5 size-2 shrink-0 rounded-full",
-                        !notification.readAt ? "bg-primary" : "bg-transparent",
-                      )}
-                    />
-                    <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
-                      <NotificationTypeIcon notification={notification} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold">{notification.title}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {notification.description}
-                      </p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {relativeTime(notification.createdAt)}
-                        {notification.metadata?.source === "public_link"
-                          ? " · Link público"
-                          : ""}
-                      </p>
-                    </div>
-                    {notification.actionUrl ? (
-                      <ChevronRight
-                        className="mt-2 size-4 shrink-0 text-muted-foreground"
-                        aria-hidden="true"
+                    tabIndex={
+                      notification.actionUrl || !notification.readAt
+                        ? 0
+                        : undefined
+                    }
+                    className={cn(
+                      "border-b border-border px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30",
+                      !notification.readAt && "bg-primary/[0.035]",
+                      (notification.actionUrl || !notification.readAt) &&
+                        "cursor-pointer hover:bg-muted/60",
+                    )}
+                  >
+                    <div className="flex gap-3">
+                      <span
+                        className={cn(
+                          "mt-1.5 size-2 shrink-0 rounded-full",
+                          !notification.readAt
+                            ? "bg-primary"
+                            : "bg-transparent",
+                        )}
                       />
-                    ) : null}
+                      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
+                        <NotificationTypeIcon notification={notification} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold">{notification.title}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {notification.description}
+                        </p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {relativeTime(notification.createdAt)}
+                          {notification.metadata?.source === "public_link"
+                            ? " · Link público"
+                            : ""}
+                        </p>
+                      </div>
+                      {notification.actionUrl ? (
+                        <ChevronRight
+                          className="mt-2 size-4 shrink-0 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                    </div>
                   </div>
-                </div>
                 </Fragment>
               ))}
               {nextCursor ? (
                 <div className="p-4 text-center">
-                  <Button variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>
-                    {loadingMore ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loadingMore}
+                    onClick={() => void loadMore()}
+                  >
+                    {loadingMore ? (
+                      <LoaderCircle className="mr-2 size-4 animate-spin" />
+                    ) : null}
                     Carregar mais
                   </Button>
                 </div>
               ) : loaded && notifications.length ? (
-                <p className="px-5 py-4 text-center text-xs text-muted-foreground">Fim das notificações.</p>
+                <p className="px-5 py-4 text-center text-xs text-muted-foreground">
+                  Fim das notificações.
+                </p>
               ) : null}
             </div>
           </aside>
@@ -1193,6 +1261,7 @@ export function ProviderNotificationTrigger({
   if (!center) return null;
 
   const hasUnread = center.unreadCount > 0;
+  const unreadLabel = center.unreadCount > 99 ? "99+" : center.unreadCount;
 
   return (
     <button
@@ -1210,7 +1279,11 @@ export function ProviderNotificationTrigger({
             ],
       )}
       aria-label={`Abrir notificações${
-        hasUnread ? `, ${center.unreadCount} não lidas` : ""
+        hasUnread
+          ? `, ${center.unreadCount} ${
+              center.unreadCount === 1 ? "não lida" : "não lidas"
+            }`
+          : ""
       }`}
       title={compact ? "Notificações" : undefined}
     >
@@ -1223,11 +1296,19 @@ export function ProviderNotificationTrigger({
             : "bg-muted text-muted-foreground",
         )}
       >
-        <Bell className="size-4" />
+        <Bell className="size-4" aria-hidden="true" />
 
-        {compact && hasUnread ? (
-          <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-primary-foreground ring-2 ring-background">
-            {center.unreadCount > 9 ? "9+" : center.unreadCount}
+        {hasUnread ? (
+          <span
+            className={cn(
+              "absolute grid min-w-5 place-items-center rounded-full",
+              "bg-primary px-1 py-0.5 text-[10px] font-bold leading-none",
+              "text-primary-foreground ring-2 ring-background",
+              compact ? "-right-1.5 -top-1.5" : "-right-2 -top-2",
+            )}
+            aria-hidden="true"
+          >
+            {unreadLabel}
           </span>
         ) : null}
       </span>
@@ -1250,12 +1331,6 @@ export function ProviderNotificationTrigger({
             </span>
           </span>
 
-          {hasUnread ? (
-            <span className="grid min-w-6 place-items-center rounded-full bg-primary px-1.5 py-1 text-[11px] font-bold leading-none text-primary-foreground">
-              {center.unreadCount > 99 ? "99+" : center.unreadCount}
-            </span>
-          ) : null}
-
           <ChevronRight
             className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
             aria-hidden="true"
@@ -1266,7 +1341,11 @@ export function ProviderNotificationTrigger({
   );
 }
 
-function NotificationPreferenceControls({ compact = false }: { compact?: boolean }) {
+function NotificationPreferenceControls({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
   const center = useContext(NotificationCenterContext);
   if (!center) return null;
   const {
@@ -1285,32 +1364,38 @@ function NotificationPreferenceControls({ compact = false }: { compact?: boolean
     {
       key: "panelNotificationsEnabled",
       label: "Receber notificações no painel",
-      description: "Exibe avisos operacionais enquanto o painel estiver aberto.",
+      description:
+        "Exibe avisos operacionais enquanto o painel estiver aberto.",
     },
     {
       key: "publicBookingNotificationsEnabled",
       label: "Novos agendamentos pelo link público",
-      description: "Mostra alertas para novos agendamentos e solicitações de confirmação.",
+      description:
+        "Mostra alertas para novos agendamentos e solicitações de confirmação.",
     },
     {
       key: "cancellationNotificationsEnabled",
       label: "Cancelamentos de agendamento",
-      description: "Reserva a preferência para avisos de cancelamento pelo cliente.",
+      description:
+        "Reserva a preferência para avisos de cancelamento pelo cliente.",
     },
     {
       key: "rescheduleNotificationsEnabled",
       label: "Reagendamentos",
-      description: "Reserva a preferência para alterações de horário pelo cliente.",
+      description:
+        "Reserva a preferência para alterações de horário pelo cliente.",
     },
     {
       key: "paymentNotificationsEnabled",
       label: "Pagamentos pendentes",
-      description: "Mostra alertas de atendimentos concluídos sem pagamento registrado.",
+      description:
+        "Mostra alertas de atendimentos concluídos sem pagamento registrado.",
     },
     {
       key: "soundEnabled",
       label: "Tocar som para novos agendamentos",
-      description: "O som toca apenas para novos agendamentos pelo link público.",
+      description:
+        "O som toca apenas para novos agendamentos pelo link público.",
     },
   ];
 
@@ -1321,15 +1406,13 @@ function NotificationPreferenceControls({ compact = false }: { compact?: boolean
       )}
     >
       <div className="flex items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary">
-          {preferences.soundEnabled ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
-        </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold">
-            {compact ? "Alertas desta conta" : "Notificações"}
+          <h2 className={cn("font-semibold", compact && "text-lg")}>
+            Notificações
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Defina como o painel deve avisar sobre novos agendamentos e pendências importantes.
+            Defina como o painel deve avisar sobre novos agendamentos e
+            pendências importantes.
           </p>
           <div className="mt-4 space-y-2">
             {items.map((item) => {
@@ -1345,7 +1428,9 @@ function NotificationPreferenceControls({ compact = false }: { compact?: boolean
                   )}
                 >
                   <span>
-                    <span className="block text-sm font-semibold">{item.label}</span>
+                    <span className="block text-sm font-semibold">
+                      {item.label}
+                    </span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
                       {item.description}
                     </span>
@@ -1385,6 +1470,10 @@ function NotificationPreferenceControls({ compact = false }: { compact?: boolean
   );
 }
 
-export function NotificationSoundSettings() {
-  return <NotificationPreferenceControls />;
+export function NotificationSoundSettings({
+  integrated = false,
+}: {
+  integrated?: boolean;
+}) {
+  return <NotificationPreferenceControls compact={integrated} />;
 }

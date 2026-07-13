@@ -15,7 +15,6 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
-  WalletCards,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -352,9 +351,6 @@ function FinancialHeader({
     <div className="rounded-2xl border border-border bg-card p-3 shadow-sm sm:p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-            <WalletCards className="size-4" />
-          </span>
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight">Financeiro</h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
@@ -687,7 +683,6 @@ function SummaryTab({
           />
           <PaymentMethods data={data} />
           <SecondaryMetrics data={data} />
-          <RecommendedActions data={data} onOpenPending={onOpenPending} />
         </aside>
       </div>
     </div>
@@ -1392,73 +1387,6 @@ function PaymentMethods({ data }: { data: FinancialViewData }) {
         ))}
       </CardContent>
     </Card>
-  );
-}
-
-function RecommendedActions({
-  data,
-  onOpenPending,
-}: {
-  data: FinancialViewData;
-  onOpenPending: () => void;
-}) {
-  const overdueCount = data.pendingPayments.filter(
-    (entry) => entry.status === "overdue",
-  ).length;
-  const recentExpenses = data.expenses.length;
-  const pendingCount = data.pendingPayments.length;
-
-  return (
-    <Card className="rounded-2xl">
-      <CardHeader>
-        <CardTitle>Ações recomendadas</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Próximos passos para fechar o período com menos pendências.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <RecommendedActionRow
-          title={`Cobrar ${overdueCount} pagamentos vencidos`}
-          detail="Priorize clientes com vencimento mais antigo."
-          onClick={onOpenPending}
-        />
-        <RecommendedActionRow
-          title={`Conferir ${recentExpenses} despesas recentes`}
-          detail="Veja se todos os custos do período foram lançados."
-        />
-        <RecommendedActionRow
-          title={`Registrar pagamento de ${pendingCount} pendências`}
-          detail="Dê baixa quando o cliente confirmar o pagamento."
-          onClick={onOpenPending}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-function RecommendedActionRow({
-  title,
-  detail,
-  onClick,
-}: {
-  title: string;
-  detail: string;
-  onClick?: () => void;
-}) {
-  const Comp = onClick ? "button" : "div";
-
-  return (
-    <Comp
-      type={onClick ? "button" : undefined}
-      onClick={onClick}
-      className={cn(
-        "block w-full rounded-xl border border-border bg-background p-3 text-left",
-        onClick && "transition-colors hover:bg-muted/50",
-      )}
-    >
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-    </Comp>
   );
 }
 

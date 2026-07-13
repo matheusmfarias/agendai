@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  BellRing,
   CalendarClock,
   Check,
   Copy,
@@ -36,6 +37,7 @@ import {
 import { getProviderLogoFallbackText } from "@/lib/provider-brand";
 import { cn } from "@/lib/utils";
 import type { FormActionState } from "@/types/form-state";
+import { NotificationSoundSettings } from "@/features/provider-notifications/components/provider-notification-center";
 
 type ServiceLocation = "BUSINESS_ADDRESS" | "CUSTOMER_ADDRESS" | "BOTH";
 type Timezone =
@@ -99,6 +101,7 @@ type TabId =
   | "location"
   | "booking"
   | "communication"
+  | "notifications"
   | "subscription"
   | "account";
 
@@ -111,6 +114,7 @@ const TABS: {
   { id: "location", label: "Localização", icon: MapPin },
   { id: "booking", label: "Agendamento", icon: CalendarClock },
   { id: "communication", label: "Comunicação", icon: MessageSquareText },
+  { id: "notifications", label: "Notificações", icon: BellRing },
   { id: "subscription", label: "Assinatura", icon: ShieldCheck },
   { id: "account", label: "Conta", icon: LockKeyhole },
 ];
@@ -254,9 +258,11 @@ export function ProviderSettingsForm({
       }),
     ) as Values;
 
-    Object.entries({ ...completeValues, googleMapsUrl: "" }).forEach(([key, value]) => {
-      data.set(key, String(value));
-    });
+    Object.entries({ ...completeValues, googleMapsUrl: "" }).forEach(
+      ([key, value]) => {
+        data.set(key, String(value));
+      },
+    );
     if (selectedLogoFile) {
       data.set("logoFile", selectedLogoFile);
     }
@@ -326,7 +332,9 @@ export function ProviderSettingsForm({
               </div>
               <div className="mt-4 rounded-xl border border-border bg-background p-3">
                 <p className="text-xs text-muted-foreground">Link público</p>
-                <p className="mt-1 truncate text-sm font-semibold">{publicPath}</p>
+                <p className="mt-1 truncate text-sm font-semibold">
+                  {publicPath}
+                </p>
                 <Button
                   type="button"
                   variant="outline"
@@ -334,7 +342,11 @@ export function ProviderSettingsForm({
                   className="mt-3 w-full"
                   onClick={copyPublicLink}
                 >
-                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                  {copied ? (
+                    <Check className="size-4" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
                   {copied ? "Copiado" : "Copiar link"}
                 </Button>
               </div>
@@ -349,7 +361,8 @@ export function ProviderSettingsForm({
                 <div>
                   <h2 className="text-lg font-semibold">Perfil público</h2>
                   <p className="text-sm text-muted-foreground">
-                    Dados exibidos no link público, nos agendamentos e nas mensagens.
+                    Dados exibidos no link público, nos agendamentos e nas
+                    mensagens.
                   </p>
                 </div>
 
@@ -373,14 +386,20 @@ export function ProviderSettingsForm({
                   <Field label="Nome do negócio" error={error("name")}>
                     <Input id="name" {...form.register("name")} />
                   </Field>
-                  <Field label="Nome público exibido" error={error("publicDisplayName")}>
+                  <Field
+                    label="Nome público exibido"
+                    error={error("publicDisplayName")}
+                  >
                     <Input
                       id="publicDisplayName"
                       placeholder="Opcional, se quiser diferente do nome legal"
                       {...form.register("publicDisplayName")}
                     />
                   </Field>
-                  <Field label="Nome do responsável" error={error("responsibleName")}>
+                  <Field
+                    label="Nome do responsável"
+                    error={error("responsibleName")}
+                  >
                     <Input
                       id="responsibleName"
                       {...form.register("responsibleName")}
@@ -390,7 +409,11 @@ export function ProviderSettingsForm({
                     <Input id="segment" {...form.register("segment")} />
                   </Field>
                   <Field label="E-mail" error={error("email")}>
-                    <Input id="email" type="email" {...form.register("email")} />
+                    <Input
+                      id="email"
+                      type="email"
+                      {...form.register("email")}
+                    />
                   </Field>
                   <Field label="WhatsApp" error={error("whatsapp")}>
                     <Input
@@ -438,7 +461,10 @@ export function ProviderSettingsForm({
                   </div>
                 </div>
 
-                <Field label="Descrição do negócio" error={error("description")}>
+                <Field
+                  label="Descrição do negócio"
+                  error={error("description")}
+                >
                   <Textarea
                     id="description"
                     rows={5}
@@ -454,9 +480,12 @@ export function ProviderSettingsForm({
             <Card className="border-border/70 bg-card/95 shadow-sm">
               <CardContent className="space-y-6 p-5">
                 <div>
-                  <h2 className="text-lg font-semibold">Localização e atendimento</h2>
+                  <h2 className="text-lg font-semibold">
+                    Localização e atendimento
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    Defina onde o serviço acontece e como o endereço aparece para o cliente.
+                    Defina onde o serviço acontece e como o endereço aparece
+                    para o cliente.
                   </p>
                 </div>
 
@@ -473,13 +502,20 @@ export function ProviderSettingsForm({
                     />
                   </Field>
                   <Field label="Bairro" error={error("neighborhood")}>
-                    <Input id="neighborhood" {...form.register("neighborhood")} />
+                    <Input
+                      id="neighborhood"
+                      {...form.register("neighborhood")}
+                    />
                   </Field>
                   <Field label="Cidade" error={error("city")}>
                     <Input id="city" {...form.register("city")} />
                   </Field>
                   <Field label="Estado (UF)" error={error("state")}>
-                    <Input id="state" maxLength={2} {...form.register("state")} />
+                    <Input
+                      id="state"
+                      maxLength={2}
+                      {...form.register("state")}
+                    />
                   </Field>
                   <Field label="Endereço" error={error("address")}>
                     <Input id="address" {...form.register("address")} />
@@ -496,8 +532,12 @@ export function ProviderSettingsForm({
                       dropdownStrategy="absolute"
                       {...form.register("serviceLocation")}
                     >
-                      <option value="BUSINESS_ADDRESS">No endereço do negócio</option>
-                      <option value="CUSTOMER_ADDRESS">No endereço do cliente</option>
+                      <option value="BUSINESS_ADDRESS">
+                        No endereço do negócio
+                      </option>
+                      <option value="CUSTOMER_ADDRESS">
+                        No endereço do cliente
+                      </option>
                       <option value="BOTH">No negócio ou no cliente</option>
                     </Select>
                   </Field>
@@ -515,7 +555,11 @@ export function ProviderSettingsForm({
                 <div className="rounded-xl border border-border bg-muted/25 p-4 text-sm text-muted-foreground">
                   Atendimento atual:{" "}
                   <strong className="text-foreground">
-                    {SERVICE_LOCATION_LABELS[values.serviceLocation ?? defaultValues.serviceLocation]}
+                    {
+                      SERVICE_LOCATION_LABELS[
+                        values.serviceLocation ?? defaultValues.serviceLocation
+                      ]
+                    }
                   </strong>
                 </div>
               </CardContent>
@@ -526,9 +570,12 @@ export function ProviderSettingsForm({
             <Card className="border-border/70 bg-card/95 shadow-sm">
               <CardContent className="space-y-6 p-5">
                 <div>
-                  <h2 className="text-lg font-semibold">Preferências de agendamento</h2>
+                  <h2 className="text-lg font-semibold">
+                    Preferências de agendamento
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    Regras padrão usadas para experiência do cliente e próximas automações.
+                    Regras padrão usadas para experiência do cliente e próximas
+                    automações.
                   </p>
                 </div>
 
@@ -542,20 +589,27 @@ export function ProviderSettingsForm({
                       <option value="America/Sao_Paulo">Brasília (BRT)</option>
                       <option value="America/Manaus">Manaus (AMT)</option>
                       <option value="America/Cuiaba">Cuiabá (AMT)</option>
-                      <option value="America/Rio_Branco">Rio Branco (ACT)</option>
+                      <option value="America/Rio_Branco">
+                        Rio Branco (ACT)
+                      </option>
                     </Select>
                   </Field>
                   <Field label="Semana começa em" error={error("weekStartsOn")}>
                     <Select
                       id="weekStartsOn"
                       dropdownStrategy="absolute"
-                      {...form.register("weekStartsOn", { valueAsNumber: true })}
+                      {...form.register("weekStartsOn", {
+                        valueAsNumber: true,
+                      })}
                     >
                       <option value={1}>Segunda-feira</option>
                       <option value={0}>Domingo</option>
                     </Select>
                   </Field>
-                  <Field label="Duração padrão (min)" error={error("defaultAppointmentDuration")}>
+                  <Field
+                    label="Duração padrão (min)"
+                    error={error("defaultAppointmentDuration")}
+                  >
                     <Input
                       id="defaultAppointmentDuration"
                       type="number"
@@ -570,7 +624,10 @@ export function ProviderSettingsForm({
                       })}
                     />
                   </Field>
-                  <Field label="Intervalo padrão (min)" error={error("defaultSlotInterval")}>
+                  <Field
+                    label="Intervalo padrão (min)"
+                    error={error("defaultSlotInterval")}
+                  >
                     <Input
                       id="defaultSlotInterval"
                       type="number"
@@ -585,7 +642,10 @@ export function ProviderSettingsForm({
                       })}
                     />
                   </Field>
-                  <Field label="Antecedência mínima (min)" error={error("minBookingNoticeMinutes")}>
+                  <Field
+                    label="Antecedência mínima (min)"
+                    error={error("minBookingNoticeMinutes")}
+                  >
                     <Input
                       id="minBookingNoticeMinutes"
                       type="number"
@@ -600,7 +660,10 @@ export function ProviderSettingsForm({
                       })}
                     />
                   </Field>
-                  <Field label="Agenda aberta por (dias)" error={error("maxBookingAdvanceDays")}>
+                  <Field
+                    label="Agenda aberta por (dias)"
+                    error={error("maxBookingAdvanceDays")}
+                  >
                     <Input
                       id="maxBookingAdvanceDays"
                       type="number"
@@ -625,7 +688,10 @@ export function ProviderSettingsForm({
                       <option value="12H">12 horas</option>
                     </Select>
                   </Field>
-                  <Field label="Cancelamento com antecedência (h)" error={error("cancellationNoticeHours")}>
+                  <Field
+                    label="Cancelamento com antecedência (h)"
+                    error={error("cancellationNoticeHours")}
+                  >
                     <Input
                       id="cancellationNoticeHours"
                       type="number"
@@ -646,7 +712,10 @@ export function ProviderSettingsForm({
                   <CheckboxField
                     label="Cliente pode cancelar"
                     description="Quando habilitado, a política permite cancelamento pelo cliente."
-                    checked={values.allowCustomerCancellation ?? defaultValues.allowCustomerCancellation}
+                    checked={
+                      values.allowCustomerCancellation ??
+                      defaultValues.allowCustomerCancellation
+                    }
                     onChange={(checked) =>
                       form.setValue("allowCustomerCancellation", checked)
                     }
@@ -654,7 +723,10 @@ export function ProviderSettingsForm({
                   <CheckboxField
                     label="Cliente pode reagendar"
                     description="Quando habilitado, a política permite reagendamento pelo cliente."
-                    checked={values.allowCustomerRescheduling ?? defaultValues.allowCustomerRescheduling}
+                    checked={
+                      values.allowCustomerRescheduling ??
+                      defaultValues.allowCustomerRescheduling
+                    }
                     onChange={(checked) =>
                       form.setValue("allowCustomerRescheduling", checked)
                     }
@@ -678,12 +750,18 @@ export function ProviderSettingsForm({
                   <CheckboxField
                     label="Lembretes automáticos"
                     description="Prepara o negócio para envio automático quando o canal estiver ativo."
-                    checked={values.enableAutomaticReminders ?? defaultValues.enableAutomaticReminders}
+                    checked={
+                      values.enableAutomaticReminders ??
+                      defaultValues.enableAutomaticReminders
+                    }
                     onChange={(checked) =>
                       form.setValue("enableAutomaticReminders", checked)
                     }
                   />
-                  <Field label="Enviar lembrete antes de (h)" error={error("reminderLeadHours")}>
+                  <Field
+                    label="Enviar lembrete antes de (h)"
+                    error={error("reminderLeadHours")}
+                  >
                     <Input
                       id="reminderLeadHours"
                       type="number"
@@ -700,21 +778,30 @@ export function ProviderSettingsForm({
                   </Field>
                 </div>
 
-                <Field label="Mensagem de confirmação" error={error("confirmationMessageTemplate")}>
+                <Field
+                  label="Mensagem de confirmação"
+                  error={error("confirmationMessageTemplate")}
+                >
                   <Textarea
                     id="confirmationMessageTemplate"
                     rows={4}
                     {...form.register("confirmationMessageTemplate")}
                   />
                 </Field>
-                <Field label="Mensagem de lembrete" error={error("reminderMessageTemplate")}>
+                <Field
+                  label="Mensagem de lembrete"
+                  error={error("reminderMessageTemplate")}
+                >
                   <Textarea
                     id="reminderMessageTemplate"
                     rows={4}
                     {...form.register("reminderMessageTemplate")}
                   />
                 </Field>
-                <Field label="Mensagem de cancelamento" error={error("cancellationMessageTemplate")}>
+                <Field
+                  label="Mensagem de cancelamento"
+                  error={error("cancellationMessageTemplate")}
+                >
                   <Textarea
                     id="cancellationMessageTemplate"
                     rows={4}
@@ -723,10 +810,18 @@ export function ProviderSettingsForm({
                 </Field>
 
                 <div className="rounded-xl border border-border bg-muted/25 p-4 text-sm text-muted-foreground">
-                  Variáveis disponíveis:{" "}
-                  <code>{"{cliente}"}</code>, <code>{"{serviço}"}</code>,{" "}
-                  <code>{"{data}"}</code>, <code>{"{hora}"}</code>.
+                  Variáveis disponíveis: <code>{"{cliente}"}</code>,{" "}
+                  <code>{"{serviço}"}</code>, <code>{"{data}"}</code>,{" "}
+                  <code>{"{hora}"}</code>.
                 </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {activeTab === "notifications" ? (
+            <Card className="border-border/70 bg-card/95 shadow-sm">
+              <CardContent className="space-y-6 p-5">
+                <NotificationSoundSettings integrated />
               </CardContent>
             </Card>
           ) : null}
@@ -737,7 +832,8 @@ export function ProviderSettingsForm({
                 <div>
                   <h2 className="text-lg font-semibold">Assinatura</h2>
                   <p className="text-sm text-muted-foreground">
-                    Dados controlados pela plataforma. Alterações de plano ficam com o administrador.
+                    Dados controlados pela plataforma. Alterações de plano ficam
+                    com o administrador.
                   </p>
                 </div>
 
@@ -758,11 +854,21 @@ export function ProviderSettingsForm({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant={subscription?.publicLinkEnabled ? "success" : "outline"}>
-                    Link público {subscription?.publicLinkEnabled ? "liberado" : "bloqueado"}
+                  <Badge
+                    variant={
+                      subscription?.publicLinkEnabled ? "success" : "outline"
+                    }
+                  >
+                    Link público{" "}
+                    {subscription?.publicLinkEnabled ? "liberado" : "bloqueado"}
                   </Badge>
-                  <Badge variant={subscription?.whatsappEnabled ? "success" : "outline"}>
-                    WhatsApp {subscription?.whatsappEnabled ? "liberado" : "bloqueado"}
+                  <Badge
+                    variant={
+                      subscription?.whatsappEnabled ? "success" : "outline"
+                    }
+                  >
+                    WhatsApp{" "}
+                    {subscription?.whatsappEnabled ? "liberado" : "bloqueado"}
                   </Badge>
                 </div>
               </CardContent>
@@ -780,15 +886,18 @@ export function ProviderSettingsForm({
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
-                  <InfoBox label="Usuário responsável" value={account.responsibleName} />
+                  <InfoBox
+                    label="Usuário responsável"
+                    value={account.responsibleName}
+                  />
                   <InfoBox label="E-mail de acesso" value={account.email} />
                   <InfoBox label="Idioma" value="Português (Brasil)" />
                   <InfoBox label="Moeda" value="Real brasileiro (BRL)" />
                 </div>
 
                 <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  Alteração de senha e gestão de equipe serão centralizadas aqui quando
-                  o módulo multiusuário do prestador for liberado.
+                  Alteração de senha e gestão de equipe serão centralizadas aqui
+                  quando o módulo multiusuário do prestador for liberado.
                 </div>
               </CardContent>
             </Card>
@@ -796,16 +905,19 @@ export function ProviderSettingsForm({
         </div>
       </div>
 
-      <div className="sticky bottom-0 z-10 flex justify-end border-t border-border bg-background/90 py-3 backdrop-blur">
-        <Button type="submit" disabled={pending}>
-          {pending ? (
-            <LoaderCircle className="size-4 animate-spin" />
-          ) : (
-            <Save className="size-4" />
-          )}
-          {pending ? "Salvando configurações..." : "Salvar configurações"}
-        </Button>
-      </div>
+      {activeTab !== "notifications" ? (
+        <div className="sticky bottom-0 z-10 flex justify-end border-t border-border bg-background/90 py-3 backdrop-blur">
+          <Button type="submit" disabled={pending}>
+            {pending ? (
+              <LoaderCircle className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
+
+            {pending ? "Salvando configurações..." : "Salvar configurações"}
+          </Button>
+        </div>
+      ) : null}
 
       <input type="hidden" value="pt-BR" {...form.register("locale")} />
       <input type="hidden" value="BRL" {...form.register("currency")} />
