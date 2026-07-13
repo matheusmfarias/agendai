@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import { ConfirmationStamp } from "@/components/brand/confirmation-stamp";
 import { Button } from "@/components/ui/button";
+import { AppointmentStatusBadge } from "@/features/appointments/appointment-status";
+import type { AppointmentStatus } from "@/generated/prisma/client";
 import {
   Card,
   CardContent,
@@ -20,18 +22,6 @@ import { formatDateTime } from "@/lib/formatters";
  *   - CANCELED_* / NO_SHOW → not shown (edge case outside scope)
  */
 
-const STATUS_LABELS = {
-  REQUESTED: "Solicitado",
-  CONFIRMED: "Confirmado",
-  WAITING_INFO: "Aguardando informações",
-  RESCHEDULED: "Reagendado",
-  CANCELED_BY_CUSTOMER: "Cancelado pelo cliente",
-  CANCELED_BY_PROVIDER: "Cancelado pelo prestador",
-  NO_SHOW: "Não compareceu",
-  IN_PROGRESS: "Em atendimento",
-  FINISHED: "Finalizado",
-} as const;
-
 const BOOKING_OUTCOME_HEADINGS = {
   DIRECT: "Agendamento confirmado",
   REQUIRES_CONFIRMATION: "Solicitação enviada",
@@ -39,8 +29,6 @@ const BOOKING_OUTCOME_HEADINGS = {
 } as const;
 
 type BookingMode = keyof typeof BOOKING_OUTCOME_HEADINGS;
-
-type AppointmentStatus = keyof typeof STATUS_LABELS;
 
 interface ConfirmationCustomValue {
   id: string;
@@ -117,9 +105,7 @@ export function BookingConfirmationCard({
             </div>
             <div>
               <dt className="text-muted-foreground">Status</dt>
-              <dd className="font-medium text-foreground">
-                {STATUS_LABELS[appointment.status]}
-              </dd>
+              <dd><AppointmentStatusBadge status={appointment.status} /></dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Cliente</dt>

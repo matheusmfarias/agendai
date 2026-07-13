@@ -4,7 +4,8 @@ import { ArrowLeft, CalendarDays, Clock, MapPin, RotateCw, Star } from "lucide-r
 
 import { AppointmentReviewForm } from "@/components/forms/appointment-review-form";
 import { Button } from "@/components/ui/button";
-import { APPOINTMENT_STATUS_LABELS } from "@/features/appointments/appointment-constants";
+import { AppointmentStatusBadge } from "@/features/appointments/appointment-status";
+import type { AppointmentStatus } from "@/generated/prisma/client";
 import { requireCustomer } from "@/features/auth/permissions";
 import { getCustomerDisplayStatus } from "@/features/customer-portal/customer-appointment-status";
 import { CustomerAppointmentsAutoRefresh } from "@/features/customer-portal/customer-appointments-auto-refresh";
@@ -18,27 +19,8 @@ import { getCustomerAppointment } from "@/server/repositories/customer-portal-re
 
 export const metadata = { title: "Detalhe do agendamento" };
 
-function statusPill(status: string) {
-  const isWaiting = status === "REQUESTED" || status === "WAITING_INFO";
-  const isConfirmed = status === "CONFIRMED";
-  const isFinished = status === "FINISHED";
-
-  return (
-    <span
-      className={`rounded-full px-4 py-3 text-sm font-bold ${
-        isFinished
-          ? "bg-primary/10 text-primary"
-          : isWaiting
-          ? "bg-warning/20 text-warning-foreground"
-          : isConfirmed
-            ? "bg-primary/10 text-primary"
-            : "bg-muted text-foreground"
-      }`}
-    >
-      {APPOINTMENT_STATUS_LABELS[status as keyof typeof APPOINTMENT_STATUS_LABELS] ??
-        status}
-    </span>
-  );
+function statusPill(status: AppointmentStatus) {
+  return <AppointmentStatusBadge status={status} className="py-1" />;
 }
 
 function formatDate(date: Date | string) {

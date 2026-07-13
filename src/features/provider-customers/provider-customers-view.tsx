@@ -27,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { APPOINTMENT_STATUS_LABELS } from "@/features/appointments/appointment-constants";
+import { AppointmentStatusBadge } from "@/features/appointments/appointment-status";
 import {
   customerWhatsappHref,
   formatCustomerPhone,
@@ -303,19 +303,7 @@ function CustomerDetailPanel({
                       {formatDateTime(appointment.startsAt)}
                     </p>
                   </div>
-                  <Badge
-                    variant={
-                      appointment.status === "FINISHED"
-                        ? "success"
-                        : appointment.status.startsWith("CANCELED")
-                          ? "destructive"
-                          : appointment.status === "CONFIRMED"
-                            ? "info"
-                            : "outline"
-                    }
-                  >
-                    {APPOINTMENT_STATUS_LABELS[appointment.status]}
-                  </Badge>
+                  <AppointmentStatusBadge status={appointment.status} />
                 </div>
                 <p className="text-sm font-semibold">
                   {formatCurrency(appointmentAmount(appointment))}

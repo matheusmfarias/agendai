@@ -32,6 +32,10 @@ import {
   APPOINTMENT_ORIGIN_LABELS,
   APPOINTMENT_STATUS_LABELS,
 } from "@/features/appointments/appointment-constants";
+import {
+  APPOINTMENT_STATUS_PRESENTATION,
+  AppointmentStatusBadge,
+} from "@/features/appointments/appointment-status";
 import type {
   AppointmentOrigin,
   AppointmentStatus,
@@ -226,47 +230,13 @@ function storeAgendaViewMode(viewMode: AgendaViewMode) {
   document.cookie = `${AGENDA_VIEW_MODE_COOKIE_NAME}=${viewMode}; path=/app/appointments; max-age=31536000; samesite=lax`;
 }
 
-const STATUS_TONE: Record<AppointmentStatus, string> = {
-  REQUESTED: "border-l-amber-700 bg-amber-200 text-amber-950 ring-1 ring-amber-300/90",
-  CONFIRMED: "border-l-primary bg-primary/15 text-foreground ring-1 ring-primary/20",
-  WAITING_INFO: "border-l-sky-700 bg-sky-200 text-sky-950 ring-1 ring-sky-300/90",
-  RESCHEDULED: "border-l-violet-700 bg-violet-200 text-violet-950 ring-1 ring-violet-300/90",
-  CANCELED_BY_CUSTOMER:
-    "border-l-slate-600 bg-slate-200 text-slate-800 ring-1 ring-slate-300/90",
-  CANCELED_BY_PROVIDER:
-    "border-l-slate-600 bg-slate-200 text-slate-800 ring-1 ring-slate-300/90",
-  NO_SHOW: "border-l-rose-700 bg-rose-200 text-rose-950 ring-1 ring-rose-300/90",
-  IN_PROGRESS: "border-l-emerald-700 bg-emerald-200 text-emerald-950 ring-1 ring-emerald-300/90",
-  FINISHED: "border-l-stone-600 bg-stone-200 text-stone-950 ring-1 ring-stone-300/90",
-};
-
-const APPOINTMENT_ACCENTS = [
-  "border-l-blue-700 bg-blue-100 text-blue-950 ring-1 ring-blue-200/90",
-  "border-l-amber-700 bg-amber-100 text-amber-950 ring-1 ring-amber-200/90",
-  "border-l-lime-700 bg-lime-100 text-lime-950 ring-1 ring-lime-200/90",
-  "border-l-sky-700 bg-sky-100 text-sky-950 ring-1 ring-sky-200/90",
-  "border-l-violet-700 bg-violet-100 text-violet-950 ring-1 ring-violet-200/90",
-  "border-l-rose-700 bg-rose-100 text-rose-950 ring-1 ring-rose-200/90",
-];
-
 type AppointmentCollisionLayout = {
   column: number;
   columns: number;
 };
 
-function hashText(value: string) {
-  return Array.from(value).reduce(
-    (total, character) => total + character.charCodeAt(0),
-    0,
-  );
-}
-
 function appointmentTone(appointment: AgendaAppointment) {
-  if (appointment.status !== "CONFIRMED")
-    return STATUS_TONE[appointment.status];
-  return APPOINTMENT_ACCENTS[
-    hashText(appointment.service.name) % APPOINTMENT_ACCENTS.length
-  ];
+  return APPOINTMENT_STATUS_PRESENTATION[appointment.status].cardTone;
 }
 
 function isConfirmationRequest(status: AppointmentStatus) {
@@ -1439,9 +1409,11 @@ function MobileDayAgenda({
                 {confirmationRequest && !paid ? (
                   <ConfirmationRequestBadge />
                 ) : (
-                  <span className="rounded-full bg-background/80 px-2 py-1 text-[11px] font-semibold shadow-sm">
-                    {paid ? "Pago" : APPOINTMENT_STATUS_LABELS[appointment.status]}
-                  </span>
+                  paid ? (
+                    <span className="rounded-full bg-background/80 px-2 py-1 text-[11px] font-semibold shadow-sm">Pago</span>
+                  ) : (
+                    <AppointmentStatusBadge status={appointment.status} />
+                  )
                 )}
               </div>
               <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
@@ -1814,13 +1786,6 @@ function WeekView({
       </div>
     </div>
   );
-}
-
-function statusBadgeVariant(status: AppointmentStatus) {
-  if (status === "FINISHED") return "success" as const;
-  if (status.startsWith("CANCELED")) return "destructive" as const;
-  if (status === "IN_PROGRESS") return "warning" as const;
-  return "outline" as const;
 }
 
 const PAYMENT_METHODS = [
@@ -2543,9 +2508,10 @@ function AppointmentDetailPanel({
             </button>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <Badge variant="secondary" className="bg-white/15 text-white">
-                  {APPOINTMENT_STATUS_LABELS[appointment.status]}
-                </Badge>
+                <AppointmentStatusBadge
+                  status={appointment.status}
+                  badgeClassName="border-white/20 bg-white/15 text-white"
+                />
                 {canEditAppointment && !isLocked ? (
                   <button
                     type="button"
@@ -2814,10 +2780,7 @@ function AppointmentDetailPanel({
 
         {!editing && !checkout ? (
           <div className="shrink-0 border-t border-border bg-background px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <Badge variant={statusBadgeVariant(appointment.status)}>
-                {APPOINTMENT_STATUS_LABELS[appointment.status]}
-              </Badge>
+            <div className="flex items-center justify-end gap-3">
               {hasCheckout ? (
                 <Button type="button" onClick={() => setReceiptOpen(true)}>
                   Ver comprovante

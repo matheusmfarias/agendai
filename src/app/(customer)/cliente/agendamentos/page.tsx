@@ -2,7 +2,8 @@ import Link from "next/link";
 import { ArrowDownUp, ArrowRight, CalendarDays, Clock, RotateCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { APPOINTMENT_STATUS_LABELS } from "@/features/appointments/appointment-constants";
+import { AppointmentStatusBadge } from "@/features/appointments/appointment-status";
+import type { AppointmentStatus } from "@/generated/prisma/client";
 import { requireCustomer } from "@/features/auth/permissions";
 import {
   getCustomerDisplayStatus,
@@ -95,27 +96,8 @@ function formatTime(date: Date | string) {
   }).format(parsed);
 }
 
-function statusPill(status: string) {
-  const isConfirmed = status === "CONFIRMED";
-  const isWaiting = status === "REQUESTED" || status === "WAITING_INFO";
-  const isFinished = status === "FINISHED";
-
-  return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-        isFinished
-          ? "bg-primary/10 text-primary"
-          : isConfirmed
-          ? "bg-primary/10 text-primary"
-          : isWaiting
-            ? "bg-warning/15 text-warning-foreground"
-            : "bg-muted text-foreground"
-      }`}
-    >
-      {APPOINTMENT_STATUS_LABELS[status as keyof typeof APPOINTMENT_STATUS_LABELS] ??
-        status}
-    </span>
-  );
+function statusPill(status: AppointmentStatus) {
+  return <AppointmentStatusBadge status={status} />;
 }
 
 function TabLink({

@@ -17,27 +17,26 @@ import {
   UsersRound,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AppointmentStatusBadge } from "@/features/appointments/appointment-status";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ContentGrid,
   MetricCard as ModuleMetricCard,
   ModulePage,
 } from "@/components/layout/module-page";
-import type { AppointmentStatus } from "@/generated/prisma/client";
+import type { AppointmentOrigin, AppointmentStatus } from "@/generated/prisma/client";
 import {
   getProviderDisplayName,
   getProviderLogoFallbackText,
 } from "@/lib/provider-brand";
-import { STATUS_BADGE_VARIANT, STATUS_SHORT_LABELS } from "./provider-constants";
 
 type DashboardAppointment = {
   id: string;
   startsAt: Date;
   endsAt: Date;
-  status: string;
-  origin: string;
+  status: AppointmentStatus;
+  origin: AppointmentOrigin;
   customer: { name: string };
   service: { name: string };
 };
@@ -127,17 +126,6 @@ function greeting() {
   if (hour < 12) return "Bom dia,";
   if (hour < 18) return "Boa tarde,";
   return "Boa noite,";
-}
-
-function statusLabel(status: string) {
-  return (
-    STATUS_SHORT_LABELS[status as AppointmentStatus] ??
-    (status === "FINISHED" ? "Concluido" : status)
-  );
-}
-
-function statusVariant(status: string) {
-  return STATUS_BADGE_VARIANT[status as AppointmentStatus] ?? "default";
 }
 
 function serviceMeta(appointment: DashboardAppointment) {
@@ -447,12 +435,10 @@ function AppointmentRow({
           {serviceMeta(appointment)}
         </p>
       </div>
-      <Badge
-        variant={statusVariant(appointment.status)}
-        className="hidden rounded-full px-2.5 sm:inline-flex"
-      >
-        {statusLabel(appointment.status)}
-      </Badge>
+      <AppointmentStatusBadge
+        status={appointment.status}
+        className="hidden sm:inline-flex"
+      />
       <MoreHorizontal className="size-4 text-muted-foreground" />
     </Link>
   );

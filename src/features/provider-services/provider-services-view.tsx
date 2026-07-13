@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
-import { APPOINTMENT_STATUS_LABELS } from "@/features/appointments/appointment-constants";
+import { AppointmentStatusBadge } from "@/features/appointments/appointment-status";
 import {
   BOOKING_MODE_LABELS,
   PRICE_TYPE_LABELS,
@@ -479,9 +479,7 @@ function ServiceDetailPanel({
                     {formatDateTime(appointment.startsAt)}
                   </p>
                 </div>
-                <Badge variant="outline">
-                  {APPOINTMENT_STATUS_LABELS[appointment.status]}
-                </Badge>
+                <AppointmentStatusBadge status={appointment.status} />
               </Link>
             ))}
           </div>
