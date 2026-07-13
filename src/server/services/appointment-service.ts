@@ -17,6 +17,7 @@ import {
   type CreateProviderNotificationInput,
 } from "@/features/provider-notifications/notification-service";
 import type { OperationalActorContext } from "@/server/services/customer-service";
+import { enqueueAppointmentConfirmation } from "@/features/whatsapp/whatsapp-outbox-service";
 import {
   getSubscriptionPolicy,
 } from "@/features/subscriptions/subscription-policy";
@@ -652,9 +653,18 @@ export async function changeAppointmentStatus(
     const current = await tx.appointment.findFirst({
       where: { id, tenantId: actor.tenantId },
       include: {
-        customer: { select: { name: true } },
+        customer: { select: { name: true, phone: true } },
         service: { select: { name: true } },
-        tenant: { select: { timezone: true } },
+        tenant: {
+          select: {
+            timezone: true,
+            name: true,
+            publicDisplayName: true,
+            address: true,
+            city: true,
+            state: true,
+          },
+        },
       },
     });
     if (!current) throw new Error("Agendamento não encontrado.");
@@ -700,6 +710,22 @@ export async function changeAppointmentStatus(
         metadata,
       ),
     });
+    if (current.status !== "CONFIRMED" && status === "CONFIRMED") {
+      await enqueueAppointmentConfirmation(tx, {
+        tenantId: actor.tenantId,
+        appointmentId: appointment.id,
+        customerName: current.customer.name,
+        customerPhone: current.customer.phone,
+        serviceName: current.service.name,
+        startsAt: appointment.startsAt,
+        timezone: current.tenant.timezone,
+        businessName: current.tenant.publicDisplayName ?? current.tenant.name,
+        businessAddress:
+          [current.tenant.address, current.tenant.city, current.tenant.state]
+            .filter(Boolean)
+            .join(", ") || undefined,
+      });
+    }
     if (status === "FINISHED") {
       const payment = await tx.financialEntry.findFirst({
         where: {

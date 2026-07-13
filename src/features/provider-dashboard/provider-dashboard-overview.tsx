@@ -60,8 +60,9 @@ type ProviderDashboardOverviewProps = {
   scheduleBlocksCount: number;
   publicBookingReady: boolean;
   publicLinkAllowed: boolean;
-  typebotReady: boolean;
-  typebotAllowed: boolean;
+  whatsappReady: boolean;
+  whatsappAllowed: boolean;
+  whatsappStatus: string | null;
 };
 
 const PENDING_STATUSES = new Set(["REQUESTED", "WAITING_INFO"]);
@@ -322,16 +323,27 @@ function ChannelsCard({
   tenantSlug,
   publicBookingReady,
   publicLinkAllowed,
-  typebotReady,
-  typebotAllowed,
+  whatsappReady,
+  whatsappAllowed,
+  whatsappStatus,
 }: {
   tenantSlug: string;
   publicBookingReady: boolean;
   publicLinkAllowed: boolean;
-  typebotReady: boolean;
-  typebotAllowed: boolean;
+  whatsappReady: boolean;
+  whatsappAllowed: boolean;
+  whatsappStatus: string | null;
 }) {
   const publicUrl = `/${tenantSlug}`;
+  const whatsappDetail = !whatsappAllowed
+    ? "Indisponível"
+    : whatsappStatus === "CONNECTED"
+      ? "Conectado"
+      : whatsappStatus === "AWAITING_QR" || whatsappStatus === "CONNECTING"
+        ? "Aguardando conexão"
+        : whatsappStatus === "DEGRADED" || whatsappStatus === "ERROR"
+          ? "Instável"
+          : "Desconectado";
 
   async function copyPublicLink() {
     if (typeof window === "undefined") return;
@@ -346,13 +358,9 @@ function ChannelsCard({
       icon: <Globe className="size-4" />,
     },
     {
-      label: "WhatsApp / Typebot",
-      detail: typebotReady
-        ? "Configurado"
-        : typebotAllowed
-          ? "Não configurado"
-          : "Indisponível",
-      ready: typebotReady,
+      label: "WhatsApp",
+      detail: whatsappDetail,
+      ready: whatsappReady,
       icon: <MessageCircle className="size-4" />,
     },
     {
@@ -573,8 +581,9 @@ export function ProviderDashboardOverview({
   activeCustomers,
   publicBookingReady,
   publicLinkAllowed,
-  typebotReady,
-  typebotAllowed,
+  whatsappReady,
+  whatsappAllowed,
+  whatsappStatus,
 }: ProviderDashboardOverviewProps) {
   const allUpcoming = [...todayAppointments, ...futureAppointments];
   const pendingCount = allUpcoming.filter((appointment) =>
@@ -699,8 +708,9 @@ export function ProviderDashboardOverview({
             tenantSlug={tenant.slug}
             publicBookingReady={publicBookingReady}
             publicLinkAllowed={publicLinkAllowed}
-            typebotReady={typebotReady}
-            typebotAllowed={typebotAllowed}
+            whatsappReady={whatsappReady}
+            whatsappAllowed={whatsappAllowed}
+            whatsappStatus={whatsappStatus}
           />
           <RecentCustomersCard appointments={allUpcoming} />
         </aside>

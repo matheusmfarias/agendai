@@ -11,6 +11,7 @@ import {
   LockKeyhole,
   MapPin,
   MessageSquareText,
+  MessageCircle,
   Save,
   ShieldCheck,
   Store,
@@ -38,6 +39,7 @@ import { getProviderLogoFallbackText } from "@/lib/provider-brand";
 import { cn } from "@/lib/utils";
 import type { FormActionState } from "@/types/form-state";
 import { NotificationSoundSettings } from "@/features/provider-notifications/components/provider-notification-center";
+import { WhatsAppSettingsPanel } from "@/features/whatsapp/components/whatsapp-settings-panel";
 
 type ServiceLocation = "BUSINESS_ADDRESS" | "CUSTOMER_ADDRESS" | "BOTH";
 type Timezone =
@@ -102,6 +104,7 @@ type TabId =
   | "booking"
   | "communication"
   | "notifications"
+  | "whatsapp"
   | "subscription"
   | "account";
 
@@ -115,6 +118,7 @@ const TABS: {
   { id: "booking", label: "Agendamento", icon: CalendarClock },
   { id: "communication", label: "Comunicação", icon: MessageSquareText },
   { id: "notifications", label: "Notificações", icon: BellRing },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "subscription", label: "Assinatura", icon: ShieldCheck },
   { id: "account", label: "Conta", icon: LockKeyhole },
 ];
@@ -875,6 +879,12 @@ export function ProviderSettingsForm({
             </Card>
           ) : null}
 
+          {activeTab === "whatsapp" ? (
+            <WhatsAppSettingsPanel
+              allowed={Boolean(subscription?.whatsappEnabled)}
+            />
+          ) : null}
+
           {activeTab === "account" ? (
             <Card className="border-border/70 bg-card/95 shadow-sm">
               <CardContent className="space-y-6 p-5">
@@ -905,7 +915,7 @@ export function ProviderSettingsForm({
         </div>
       </div>
 
-      {activeTab !== "notifications" ? (
+      {activeTab !== "notifications" && activeTab !== "whatsapp" ? (
         <div className="sticky bottom-0 z-10 flex justify-end border-t border-border bg-background/90 py-3 backdrop-blur">
           <Button type="submit" disabled={pending}>
             {pending ? (

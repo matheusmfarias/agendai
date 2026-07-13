@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, txMock, createProviderNotificationMock } = vi.hoisted(() => {
+const { prismaMock, txMock, createProviderNotificationMock, enqueueConfirmationMock } = vi.hoisted(() => {
   const tx = {
     tenant: { findUnique: vi.fn() },
     service: { findFirst: vi.fn() },
@@ -22,6 +22,7 @@ const { prismaMock, txMock, createProviderNotificationMock } = vi.hoisted(() => 
       ),
     },
     createProviderNotificationMock: vi.fn(),
+    enqueueConfirmationMock: vi.fn(),
   };
 });
 
@@ -49,6 +50,9 @@ vi.mock("@/features/booking-core/timezone", () => ({
 }));
 vi.mock("@/features/provider-notifications/notification-service", () => ({
   createProviderNotification: createProviderNotificationMock,
+}));
+vi.mock("@/features/whatsapp/whatsapp-outbox-service", () => ({
+  enqueueAppointmentConfirmation: enqueueConfirmationMock,
 }));
 
 import {
@@ -125,6 +129,14 @@ describe("public booking ownership", () => {
         entityId: "appointment-a",
       }),
       txMock,
+    );
+    expect(enqueueConfirmationMock).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({
+        tenantId: "tenant-a-id",
+        appointmentId: "appointment-a",
+        serviceName: "Consulta",
+      }),
     );
   });
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, txMock, createProviderNotificationMock } = vi.hoisted(() => {
+const { prismaMock, txMock, createProviderNotificationMock, enqueueConfirmationMock } = vi.hoisted(() => {
   const tx = {
     customer: { findFirst: vi.fn() },
     service: { findFirst: vi.fn(), findMany: vi.fn() },
@@ -35,12 +35,16 @@ const { prismaMock, txMock, createProviderNotificationMock } = vi.hoisted(() => 
       ),
     },
     createProviderNotificationMock: vi.fn(),
+    enqueueConfirmationMock: vi.fn(),
   };
 });
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/features/provider-notifications/notification-service", () => ({
   createProviderNotification: createProviderNotificationMock,
+}));
+vi.mock("@/features/whatsapp/whatsapp-outbox-service", () => ({
+  enqueueAppointmentConfirmation: enqueueConfirmationMock,
 }));
 
 import {
@@ -160,6 +164,34 @@ describe("appointment service tenant isolation", () => {
       internalNotes: "",
       origin: "MANUAL_PANEL",
     });
+  });
+
+  it("creates the confirmation outbox in the manual confirmation transaction", async () => {
+    const current = {
+      ...currentAppointment(),
+      status: "REQUESTED",
+      customer: { name: "Cliente A", phone: "11987654321" },
+      service: { name: "Serviço A" },
+      tenant: {
+        timezone: "America/Sao_Paulo",
+        name: "Studio A",
+        publicDisplayName: null,
+        address: "Rua A",
+        city: "São Paulo",
+        state: "SP",
+      },
+    };
+    txMock.appointment.findFirst.mockResolvedValue(current);
+    txMock.appointment.update.mockResolvedValue({ ...currentAppointment(), status: "CONFIRMED" });
+    txMock.appointmentEvent.create.mockResolvedValue({});
+    txMock.auditLog.create.mockResolvedValue({});
+
+    await changeAppointmentStatus(ids.appointmentB, "CONFIRMED", undefined, actor);
+
+    expect(enqueueConfirmationMock).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({ tenantId: ids.tenantA, appointmentId: ids.appointmentB }),
+    );
   });
 
   it.each([

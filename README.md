@@ -433,7 +433,12 @@ Botões de submit alinhados ao modo de agendamento. Sem alterações em regras d
 negócio, consultas ou ações do servidor. Documentação em
 [`/docs/design/public-experience-conversion-redesign.md`](/docs/design/public-experience-conversion-redesign.md).
 
-Também não existem: painel visual de bot, gateway de
-pagamento, pagamento online, cancelamento ou remarcação via WhatsApp,
-expiração automática de credenciais, Redis, fila/worker, envio ativo de
-mensagens, webhook WhatsApp.
+**WhatsApp transacional — beta:** Integração não oficial com Evolution API 2.3.6,
+conexão por QR Code, status por tenant, teste manual e confirmação de agendamento
+por outbox PostgreSQL, BullMQ e worker separado. Desabilitada por padrão e sem
+chatbot, leitura de mensagens ou campanhas. Setup e operação em
+[`/docs/technical/whatsapp-integration.md`](/docs/technical/whatsapp-integration.md)
+e [`/infra/whatsapp/README.md`](/infra/whatsapp/README.md).
+
+Também não existem: painel visual de bot, gateway de pagamento, pagamento online,
+cancelamento ou remarcação via WhatsApp, campanhas ou atendimento conversacional.

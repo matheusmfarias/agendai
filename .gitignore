@@ -29,6 +29,7 @@ src/generated/prisma/
 .env
 .env.*
 .env.example
+!infra/whatsapp/.env.example
 
 # Local uploads and runtime storage
 storage/
@@ -43,6 +44,7 @@ uploads/
 *.dump
 *.sql.gz
 docker-compose.yml
+!infra/whatsapp/docker-compose.yml
 
 # Logs
 logs/

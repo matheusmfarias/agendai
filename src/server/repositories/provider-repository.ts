@@ -26,6 +26,10 @@ export function getProviderDashboard(tenantId: string) {
           },
         },
       },
+      whatsappConnections: {
+        take: 1,
+        select: { status: true, enabled: true },
+      },
       _count: {
         select: {
           serviceCategories: { where: { isActive: true } },

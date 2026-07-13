@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion?: string;
 };
 
-const PRISMA_SCHEMA_VERSION = "20260710120000_add_provider_notifications";
+const PRISMA_SCHEMA_VERSION = "20260713210000_add_whatsapp_transactional_gateway";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;

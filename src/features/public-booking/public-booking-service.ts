@@ -18,6 +18,7 @@ import { createProviderNotification } from "@/features/provider-notifications/no
 import type { CreateProviderNotificationInput } from "@/features/provider-notifications/notification-service";
 import { getSubscriptionPolicy } from "@/features/subscriptions/subscription-policy";
 import type { PublicBookingInput } from "@/features/public-booking/public-booking-schemas";
+import { enqueueAppointmentConfirmation } from "@/features/whatsapp/whatsapp-outbox-service";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
@@ -60,6 +61,7 @@ type CustomerUserForPublicBooking = {
 type TenantCustomerForPublicBooking = {
   id: string;
   name: string;
+  phone: string;
   userId: string | null;
 };
 
@@ -402,6 +404,22 @@ export async function createPublicBooking(
           estimatedPrice: service.priceValue,
         },
       });
+
+      if (status === "CONFIRMED") {
+        await enqueueAppointmentConfirmation(tx, {
+          tenantId: tenant.id,
+          appointmentId: appointment.id,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          serviceName: service.name,
+          startsAt,
+          timezone: tenant.timezone,
+          businessName: tenant.publicDisplayName ?? tenant.name,
+          businessAddress:
+            [tenant.address, tenant.city, tenant.state].filter(Boolean).join(", ") ||
+            undefined,
+        });
+      }
 
       if (status === "CONFIRMED" || status === "REQUESTED") {
         const { date: bookingDate, time: bookingTime } = notificationDateParts(

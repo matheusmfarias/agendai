@@ -66,8 +66,10 @@ export default async function ProviderDashboardPage() {
     policy.canUsePublicLink &&
     dashboard._count.services > 0 &&
     dashboard._count.availabilityRules > 0;
-  const typebotReady =
-    policy.canUseTypebot && dashboard._count.typebotCredentials > 0;
+  const whatsappReady =
+    policy.canUseTypebot &&
+    dashboard.whatsappConnections[0]?.status === "CONNECTED" &&
+    dashboard.whatsappConnections[0]?.enabled === true;
 
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
@@ -129,8 +131,9 @@ export default async function ProviderDashboardPage() {
         scheduleBlocksCount={dashboard._count.scheduleBlocks}
         publicBookingReady={publicBookingReady}
         publicLinkAllowed={policy.canUsePublicLink}
-        typebotReady={typebotReady}
-        typebotAllowed={policy.canUseTypebot}
+        whatsappReady={whatsappReady}
+        whatsappAllowed={policy.canUseTypebot}
+        whatsappStatus={dashboard.whatsappConnections[0]?.status ?? null}
       />
     </div>
   );
