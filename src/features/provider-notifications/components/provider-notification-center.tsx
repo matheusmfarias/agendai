@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import type {
   ProviderNotification,
   ProviderNotificationPreferences,
@@ -33,6 +34,7 @@ import type {
 import { DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES } from "@/features/provider-notifications/types";
 import { providerNotificationAlertDecision } from "@/features/provider-notifications/notification-alert-policy";
 import { createProviderNotificationPreferenceQueue } from "@/features/provider-notifications/notification-preference-queue";
+import { lockPageScroll } from "@/features/provider-notifications/page-scroll-lock";
 import {
   consumeUnreadTransition,
   mergeProviderNotificationPages,
@@ -671,12 +673,17 @@ export function ProviderNotificationCenter({
 
   useEffect(() => {
     if (!drawerOpen) return;
+    return lockPageScroll();
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
     const dialog = drawerRef.current;
     const focusable = () =>
       dialog
         ? Array.from(
             dialog.querySelectorAll<HTMLElement>(
-              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+              'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
             ),
           )
         : [];
@@ -691,6 +698,11 @@ export function ProviderNotificationCenter({
         if (!items.length) return;
         const first = items[0];
         const last = items.at(-1);
+        if (!dialog?.contains(document.activeElement)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first)?.focus();
+          return;
+        }
         if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
           last?.focus();
@@ -931,12 +943,12 @@ export function ProviderNotificationCenter({
           />
           <aside
             ref={drawerRef}
-            className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-border bg-card shadow-2xl"
+            className="absolute inset-y-0 right-0 flex h-[100dvh] max-h-[100dvh] w-full max-w-md flex-col overflow-hidden border-l border-border bg-card shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="Central de notificações"
           >
-            <div className="border-b border-border px-4 py-3 min-[360px]:px-5">
+            <div className="shrink-0 border-b border-border px-4 py-3 min-[360px]:px-5">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="text-lg font-semibold">Notificações</h2>
@@ -955,7 +967,32 @@ export function ProviderNotificationCenter({
                   <X className="size-4" />
                 </button>
               </div>
-              <div className="mt-2 flex min-h-10 items-center justify-between gap-2">
+            </div>
+            <div className="shrink-0 space-y-2 border-b border-border px-4 py-3 min-[360px]:px-5">
+              <div className="flex min-h-10 items-center justify-between gap-2">
+                <div className="flex shrink-0 gap-1 rounded-xl bg-muted p-1">
+                  {(
+                    [
+                      ["all", "Todas"],
+                      ["unread", "Não lidas"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={statusFilter === value}
+                      onClick={() => setStatusFilter(value)}
+                      className={cn(
+                        "rounded-lg px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                        statusFilter === value
+                          ? "bg-card text-foreground shadow-sm"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {unreadCount > 0 ? (
                   <button
                     type="button"
@@ -965,64 +1002,60 @@ export function ProviderNotificationCenter({
                     <CheckCheck className="size-4" /> Ler todas
                   </button>
                 ) : (
-                  <span />
+                  <span aria-hidden="true" />
                 )}
+              </div>
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <Select
+                    value={categoryFilter}
+                    clearable={false}
+                    onChange={(event) =>
+                      setCategoryFilter(
+                        event.target.value as typeof categoryFilter,
+                      )
+                    }
+                    aria-label="Filtrar por categoria"
+                  >
+                    <option value="all">Todas as categorias</option>
+                    <option value="bookings">Agendamentos</option>
+                    <option value="financial">Financeiro</option>
+                    <option value="system">Sistema</option>
+                  </Select>
+                </div>
                 <button
                   type="button"
                   onClick={() => setPreferencesOpen((current) => !current)}
                   aria-expanded={preferencesOpen}
                   aria-controls="notification-inline-preferences"
-                  className="inline-flex min-h-10 items-center gap-1.5 rounded-xl px-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label={
+                    preferencesOpen
+                      ? "Fechar preferências de notificação"
+                      : "Abrir preferências de notificação"
+                  }
+                  title={
+                    preferencesOpen
+                      ? "Fechar preferências de notificação"
+                      : "Abrir preferências de notificação"
+                  }
+                  className={cn(
+                    "grid size-11 shrink-0 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                    preferencesOpen && "bg-muted text-foreground",
+                  )}
                 >
-                  <Settings2 className="size-4" /> Preferências
+                  <Settings2 className="size-4" aria-hidden="true" />
                 </button>
               </div>
             </div>
             {preferencesOpen ? (
               <div
                 id="notification-inline-preferences"
-                className="max-h-[45vh] overflow-y-auto border-b border-border bg-muted/20 p-4"
+                className="max-h-[45dvh] shrink-0 overflow-y-auto overscroll-contain border-b border-border bg-muted/20 p-4"
               >
                 <NotificationPreferenceControls compact />
               </div>
             ) : null}
-            <div className="flex flex-col gap-2 border-b border-border px-4 py-3 min-[360px]:px-5 min-[380px]:flex-row min-[380px]:items-center">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="flex shrink-0 gap-1 rounded-xl bg-muted p-1">
-                {([ ["all", "Todas"], ["unread", "Não lidas"] ] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setStatusFilter(value)}
-                    className={cn(
-                      "rounded-lg px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
-                      statusFilter === value
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-                </div>
-                <select
-                  value={categoryFilter}
-                  onChange={(event) =>
-                    setCategoryFilter(
-                      event.target.value as typeof categoryFilter,
-                    )
-                  }
-                  className="min-w-0 flex-1 rounded-xl border border-border bg-background px-2 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                  aria-label="Filtrar por categoria"
-                >
-                  <option value="all">Todas as categorias</option>
-                  <option value="bookings">Agendamentos</option>
-                  <option value="financial">Financeiro</option>
-                  <option value="system">Sistema</option>
-                </select>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {!loaded && !loadError ? (
                 <div className="grid place-items-center py-12 text-sm text-muted-foreground">
                   <LoaderCircle className="mb-2 size-5 animate-spin" />
@@ -1150,29 +1183,85 @@ export function ProviderNotificationCenter({
   );
 }
 
-export function ProviderNotificationTrigger({ compact = false }: { compact?: boolean }) {
+export function ProviderNotificationTrigger({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
   const center = useContext(NotificationCenterContext);
+
   if (!center) return null;
+
+  const hasUnread = center.unreadCount > 0;
+
   return (
     <button
       type="button"
       onClick={(event) => center.open(event.currentTarget)}
       className={cn(
-        "group relative flex items-center rounded-2xl text-sm text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
-        compact ? "size-10 justify-center border border-border bg-card shadow-sm" : "w-full gap-3 px-2.5 py-2",
+        "group relative text-sm transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+        compact
+          ? "flex size-10 items-center justify-center rounded-xl border border-border bg-card shadow-sm hover:bg-muted"
+          : [
+              "flex w-full items-center gap-3 rounded-2xl border border-border",
+              "bg-card px-3 py-3 text-left shadow-sm",
+              "hover:border-primary/20 hover:bg-primary/[0.025]",
+            ],
       )}
-      aria-label={`Abrir notificações${center.unreadCount ? `, ${center.unreadCount} não lidas` : ""}`}
-      title="Notificações"
+      aria-label={`Abrir notificações${
+        hasUnread ? `, ${center.unreadCount} não lidas` : ""
+      }`}
+      title={compact ? "Notificações" : undefined}
     >
-      <span className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-muted/70 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary">
+      <span
+        className={cn(
+          "relative grid shrink-0 place-items-center rounded-xl",
+          compact ? "size-8" : "size-10",
+          hasUnread
+            ? "bg-primary-soft text-primary"
+            : "bg-muted text-muted-foreground",
+        )}
+      >
         <Bell className="size-4" />
-        {center.unreadCount > 0 ? (
+
+        {compact && hasUnread ? (
           <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-primary-foreground ring-2 ring-background">
             {center.unreadCount > 9 ? "9+" : center.unreadCount}
           </span>
         ) : null}
       </span>
-      {!compact ? <span className="font-semibold">Notificações</span> : null}
+
+      {!compact ? (
+        <>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold text-foreground">
+              Notificações
+            </span>
+
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+              {hasUnread
+                ? `${center.unreadCount} ${
+                    center.unreadCount === 1
+                      ? "aviso não lido"
+                      : "avisos não lidos"
+                  }`
+                : "Nenhum aviso novo"}
+            </span>
+          </span>
+
+          {hasUnread ? (
+            <span className="grid min-w-6 place-items-center rounded-full bg-primary px-1.5 py-1 text-[11px] font-bold leading-none text-primary-foreground">
+              {center.unreadCount > 99 ? "99+" : center.unreadCount}
+            </span>
+          ) : null}
+
+          <ChevronRight
+            className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+            aria-hidden="true"
+          />
+        </>
+      ) : null}
     </button>
   );
 }

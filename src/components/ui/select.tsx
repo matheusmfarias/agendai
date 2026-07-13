@@ -17,6 +17,7 @@ type SelectProps = Omit<
   "onChange" | "children"
 > & {
   children: React.ReactNode;
+  clearable?: boolean;
   onChange?: React.ChangeEventHandler<HTMLSelectElement>;
   dropdownStrategy?: "fixed" | "absolute";
 };
@@ -79,8 +80,11 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
     id,
     disabled,
     required,
+    clearable = true,
     onChange,
     onBlur,
+    "aria-label": ariaLabel,
+    "aria-labelledby": ariaLabelledby,
     dropdownStrategy = "fixed",
   },
   ref,
@@ -103,6 +107,7 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const currentValue = isControlled ? String(value) : internalValue;
   const selectedOption =
     options.find((option) => option.value === currentValue) ?? options[0];
@@ -113,6 +118,15 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
         normalizeSearch(option.label).includes(normalizedSearch),
       )
     : options;
+
+  const closePopup = React.useCallback((restoreTriggerFocus: boolean) => {
+    setOpen(false);
+    if (!restoreTriggerFocus) return;
+    window.setTimeout(
+      () => triggerRef.current?.focus({ preventScroll: true }),
+      0,
+    );
+  }, []);
 
   React.useEffect(() => {
     setMounted(true);
@@ -131,13 +145,13 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
         !wrapperRef.current?.contains(target) &&
         !dropdownRef.current?.contains(target)
       ) {
-        setOpen(false);
+        closePopup(false);
       }
     }
 
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, []);
+  }, [closePopup]);
 
   React.useEffect(() => {
     if (open) {
@@ -181,6 +195,10 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
 
     const previousBodyOverflow = document.body.style.overflow;
     const previousHtmlOverflow = document.documentElement.style.overflow;
+    const pageAlreadyLocked =
+      document.body.style.position === "fixed" &&
+      previousBodyOverflow === "hidden" &&
+      previousHtmlOverflow === "hidden";
     const lockedAncestors = getScrollableAncestors(wrapperRef.current);
     const previousAncestorStyles = lockedAncestors.map((element) => ({
       element,
@@ -190,8 +208,10 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
       overscrollBehavior: element.style.overscrollBehavior,
     }));
 
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
+    if (!pageAlreadyLocked) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    }
     lockedAncestors.forEach((element) => {
       element.style.overflow = "hidden";
       element.style.overscrollBehavior = "contain";
@@ -214,8 +234,10 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
     });
 
     return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
+      if (!pageAlreadyLocked) {
+        document.body.style.overflow = previousBodyOverflow;
+        document.documentElement.style.overflow = previousHtmlOverflow;
+      }
       previousAncestorStyles.forEach(
         ({ element, overflow, overflowX, overflowY, overscrollBehavior }) => {
           element.style.overflow = overflow;
@@ -252,6 +274,13 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
         dropdownStrategy === "absolute" ? "absolute" : "fixed",
       )}
       style={dropdownStyle}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          closePopup(true);
+        }
+      }}
       onWheel={(event) => event.stopPropagation()}
       onTouchMove={(event) => event.stopPropagation()}
     >
@@ -262,11 +291,6 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
             ref={searchInputRef}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                setOpen(false);
-              }
-            }}
             className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring/20"
             placeholder="Pesquisar..."
           />
@@ -302,7 +326,7 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
                 )}
                 onClick={() => {
                   emitChange(option.value);
-                  setOpen(false);
+                  closePopup(true);
                 }}
               >
                 <span className="min-w-0 truncate">{option.label}</span>
@@ -337,18 +361,27 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
         )}
       >
         <button
+          ref={triggerRef}
           id={id}
           type="button"
           disabled={disabled}
           aria-haspopup="listbox"
           aria-expanded={open}
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledby}
           onBlur={() => {
             onBlur?.({
               target: { name, value: currentValue },
               currentTarget: { name, value: currentValue },
             } as React.FocusEvent<HTMLSelectElement>);
           }}
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => {
+            if (open) {
+              closePopup(false);
+            } else {
+              setOpen(true);
+            }
+          }}
           className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left outline-none disabled:cursor-not-allowed"
         >
           <span
@@ -366,7 +399,7 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
             )}
           />
         </button>
-        {hasValue && !required ? (
+        {clearable && hasValue && !required ? (
           <button
             type="button"
             disabled={disabled}
@@ -380,7 +413,10 @@ const Select = React.forwardRef<HTMLInputElement, SelectProps>(function Select(
       </span>
 
       {dropdownStrategy === "fixed" && mounted
-        ? createPortal(dropdown, document.body)
+        ? createPortal(
+            dropdown,
+            wrapperRef.current?.closest('[role="dialog"]') ?? document.body,
+          )
         : dropdown}
     </span>
   );
