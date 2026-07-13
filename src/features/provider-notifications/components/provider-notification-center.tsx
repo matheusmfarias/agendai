@@ -1,13 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
   CalendarCheck2,
   CheckCheck,
   ChevronRight,
+  CircleDollarSign,
   LoaderCircle,
+  Settings2,
   Volume2,
   VolumeX,
   X,
@@ -20,12 +31,40 @@ import type {
   ProviderNotificationsResponse,
 } from "@/features/provider-notifications/types";
 import { DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES } from "@/features/provider-notifications/types";
+import { providerNotificationAlertDecision } from "@/features/provider-notifications/notification-alert-policy";
+import { createProviderNotificationPreferenceQueue } from "@/features/provider-notifications/notification-preference-queue";
+import {
+  consumeUnreadTransition,
+  mergeProviderNotificationPages,
+  mergePendingProviderNotificationPoll,
+  observeProviderNotificationPoll,
+  providerNotificationListUrl,
+  unreadNotificationIds,
+} from "@/features/provider-notifications/notification-client-state";
+import {
+  createProviderNotificationCoordinator,
+  type ProviderNotificationCoordinationMessage,
+} from "@/features/provider-notifications/notification-coordination";
 import { cn } from "@/lib/utils";
 
 const POLLING_INTERVAL_MS = 30_000;
 const TOAST_DURATION_MS = 8_000;
-const SOUND_ENABLED_KEY = "agendai:sound-enabled";
 const SOUND_PROMPT_DISMISSED_KEY = "agendai:sound-permission-dismissed";
+
+type NotificationCenterContextValue = {
+  unreadCount: number;
+  open: (trigger: HTMLButtonElement) => void;
+  preferences: ProviderNotificationPreferences;
+  preferencesLoaded: boolean;
+  soundFeedback: string | null;
+  updatePreference: (
+    key: keyof ProviderNotificationPreferences,
+    value: boolean,
+  ) => Promise<boolean>;
+  testSound: () => Promise<boolean>;
+};
+
+const NotificationCenterContext = createContext<NotificationCenterContextValue | null>(null);
 
 function relativeTime(value: string) {
   const seconds = Math.max(
@@ -43,18 +82,21 @@ function relativeTime(value: string) {
   }).format(new Date(value));
 }
 
+function notificationDateGroup(value: string) {
+  const date = new Date(value);
+  const today = new Date();
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const days = Math.round((startToday.getTime() - startDate.getTime()) / 86_400_000);
+  if (days === 0) return "Hoje";
+  if (days === 1) return "Ontem";
+  return "Anteriores";
+}
+
 function isBookingNotification(notification: ProviderNotification) {
   return (
     notification.type === "public_booking_created" ||
     notification.type === "booking_confirmation_required"
-  );
-}
-
-function isImportantNotification(notification: ProviderNotification) {
-  return (
-    isBookingNotification(notification) ||
-    notification.priority === "high" ||
-    notification.priority === "critical"
   );
 }
 
@@ -70,25 +112,20 @@ function notificationGroup(notification: ProviderNotification) {
   return "bookings";
 }
 
-function shouldShowNotificationAlert(
-  notification: ProviderNotification,
-  preferences: ProviderNotificationPreferences,
-) {
-  if (!preferences.panelNotificationsEnabled) return false;
-  if (
-    notification.type === "public_booking_created" ||
-    notification.type === "booking_confirmation_required"
-  ) return preferences.publicBookingNotificationsEnabled;
-  if (notification.type === "booking_canceled") {
-    return preferences.cancellationNotificationsEnabled;
+function NotificationTypeIcon({ notification }: { notification: ProviderNotification }) {
+  if (notificationGroup(notification) === "financial") {
+    return <CircleDollarSign className="size-4" aria-hidden="true" />;
   }
-  if (notification.type === "booking_rescheduled") {
-    return preferences.rescheduleNotificationsEnabled;
+  if (notificationGroup(notification) === "bookings") {
+    return <CalendarCheck2 className="size-4" aria-hidden="true" />;
   }
-  if (notification.type === "payment_pending") {
-    return preferences.paymentNotificationsEnabled;
-  }
-  return true;
+  return <Bell className="size-4" aria-hidden="true" />;
+}
+
+function notificationActionLabel(notification: ProviderNotification) {
+  if (notificationGroup(notification) === "financial") return "Ver financeiro";
+  if (notification.entityType === "appointment") return "Ver agendamento";
+  return "Abrir no painel";
 }
 
 function getBaseTitle(value: string) {
@@ -97,7 +134,15 @@ function getBaseTitle(value: string) {
     .replace(/^Novo agendamento!\s*\|\s*/, "");
 }
 
-export function ProviderNotificationCenter() {
+export function ProviderNotificationCenter({
+  tenantId,
+  userId,
+  children,
+}: {
+  tenantId: string;
+  userId: string;
+  children: ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -107,26 +152,62 @@ export function ProviderNotificationCenter() {
   );
   const [unreadCount, setUnreadCount] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [filter, setFilter] = useState<
-    "all" | "unread" | "bookings" | "financial" | "system"
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "unread">("all");
+  const [categoryFilter, setCategoryFilter] = useState<
+    "all" | "bookings" | "financial" | "system"
   >("all");
   const [toast, setToast] = useState<ProviderNotification | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [showSoundPrompt, setShowSoundPrompt] = useState(false);
   const [agendaHighlightVisible, setAgendaHighlightVisible] = useState(false);
+  const [soundFeedback, setSoundFeedback] = useState<string | null>(null);
+  const [preferences, setPreferences] = useState<ProviderNotificationPreferences>(
+    DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
+  );
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const seenIds = useRef(new Set<string>());
   const initialLoadComplete = useRef(false);
   const preferencesRef = useRef<ProviderNotificationPreferences>(
     DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
   );
   const requestInFlight = useRef(false);
+  const loadNotificationsRef = useRef<
+    ((allowAlerts: boolean) => Promise<void>) | null
+  >(null);
+  const pendingPollRef = useRef(false);
+  const pendingPollAllowAlertsRef = useRef(false);
+  const listRequestIdRef = useRef(0);
+  const loadedAdditionalPagesRef = useRef(false);
+  const loadedPageCountRef = useRef(1);
+  const filterInitializedRef = useRef(false);
+  const statusFilterRef = useRef<"all" | "unread">("all");
+  const categoryFilterRef = useRef<
+    "all" | "bookings" | "financial" | "system"
+  >("all");
+  const preferencePatchQueueRef = useRef<ReturnType<
+    typeof createProviderNotificationPreferenceQueue
+  > | null>(null);
   const unreadCountRef = useRef(0);
+  const unreadIdsRef = useRef(new Set<string>());
   const pathnameRef = useRef(pathname);
   const currentDateRef = useRef(currentDate);
   const baseTitle = useRef("");
   const temporaryTitleActive = useRef(false);
   const titleTimer = useRef<number | null>(null);
   const agendaHighlightTimer = useRef<number | null>(null);
+  const coordinatorRef = useRef<ReturnType<typeof createProviderNotificationCoordinator> | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const soundPromptDismissedKey = `${SOUND_PROMPT_DISMISSED_KEY}:${tenantId}:${userId}`;
+
+  const openNotifications = useCallback((trigger: HTMLButtonElement) => {
+    openerRef.current = trigger;
+    setDrawerOpen(true);
+  }, []);
 
   const applyCountTitle = useCallback(() => {
     if (!baseTitle.current || temporaryTitleActive.current) return;
@@ -140,8 +221,85 @@ export function ProviderNotificationCenter() {
     if (!preferencesRef.current.soundEnabled) return;
     const audio = new Audio("/sounds/new-booking.mp3");
     audio.volume = 0.35;
-    void audio.play().catch(() => undefined);
+    void audio.play().catch(() => {
+      setSoundFeedback("O navegador bloqueou o som. Interaja com a página e tente novamente.");
+    });
   }, []);
+
+  const testSound = useCallback(async () => {
+    const audio = new Audio("/sounds/new-booking.mp3");
+    audio.volume = 0.2;
+    try {
+      await audio.play();
+      setSoundFeedback("Som de teste reproduzido com sucesso.");
+      return true;
+    } catch {
+      setSoundFeedback(
+        "O navegador bloqueou o som. Interaja com a página e tente novamente.",
+      );
+      return false;
+    }
+  }, []);
+
+  const applyPreferences = useCallback(
+    (next: ProviderNotificationPreferences) => {
+      preferencesRef.current = next;
+      setPreferences(next);
+    },
+    [],
+  );
+
+  const refreshPreferences = useCallback(async () => {
+    try {
+      const response = await fetch("/api/provider/notifications/preferences", {
+        cache: "no-store",
+      });
+      if (!response.ok) return null;
+      const payload = (await response.json()) as {
+        preferences: ProviderNotificationPreferences;
+      };
+      applyPreferences(payload.preferences);
+      return payload.preferences;
+    } catch {
+      return null;
+    }
+  }, [applyPreferences]);
+
+  const updatePreference = useCallback(
+    (
+      key: keyof ProviderNotificationPreferences,
+      value: boolean,
+    ) => {
+      preferencePatchQueueRef.current ??=
+        createProviderNotificationPreferenceQueue({
+          getCurrent: () => preferencesRef.current,
+          apply: applyPreferences,
+          patch: async (patchKey, patchValue) => {
+            const response = await fetch(
+              "/api/provider/notifications/preferences",
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ [patchKey]: patchValue }),
+              },
+            );
+            if (!response.ok) return null;
+            const payload = (await response.json()) as {
+              preferences: ProviderNotificationPreferences;
+            };
+            return payload.preferences;
+          },
+          refresh: refreshPreferences,
+          invalidate: () =>
+            coordinatorRef.current?.publish({
+              type: "invalidate",
+              reason: "preferences",
+            }),
+        });
+      return preferencePatchQueueRef.current.enqueue(key, value);
+    },
+    [applyPreferences, refreshPreferences],
+  );
 
   const showTemporaryBookingTitle = useCallback(() => {
     if (!baseTitle.current) return;
@@ -154,31 +312,60 @@ export function ProviderNotificationCenter() {
     }, 5000);
   }, [applyCountTitle]);
 
-  const loadNotifications = useCallback(async () => {
-    if (requestInFlight.current) return;
+  const loadNotifications = useCallback(async (allowAlerts: boolean) => {
+    if (requestInFlight.current) {
+      const pending = mergePendingProviderNotificationPoll(
+        {
+          pending: pendingPollRef.current,
+          allowAlerts: pendingPollAllowAlertsRef.current,
+        },
+        allowAlerts,
+      );
+      pendingPollRef.current = pending.pending;
+      pendingPollAllowAlertsRef.current = pending.allowAlerts;
+      return;
+    }
     requestInFlight.current = true;
 
     try {
       const response = await fetch("/api/provider/notifications?limit=20", {
         cache: "no-store",
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        setLoadError(true);
+        setLoaded(true);
+        return;
+      }
 
       const payload = (await response.json()) as ProviderNotificationsResponse;
-      const fresh = payload.notifications.filter(
-        (notification) => !seenIds.current.has(notification.id),
-      );
+      const observation = observeProviderNotificationPoll({
+        ids: payload.notifications.map(({ id }) => id),
+        seenIds: seenIds.current,
+        baselineEstablished: initialLoadComplete.current,
+        allowAlerts,
+      });
+      initialLoadComplete.current = observation.baselineEstablished;
+      const freshIds = new Set(observation.freshIds);
+      const fresh = payload.notifications.filter(({ id }) => freshIds.has(id));
 
-      if (initialLoadComplete.current && fresh.length) {
-        const newest = fresh
-          .filter((notification) =>
-            shouldShowNotificationAlert(notification, preferencesRef.current),
-          )
-          .find(isImportantNotification);
+      if (allowAlerts && initialLoadComplete.current && fresh.length) {
+        const newest = fresh.find(
+          (notification) =>
+            providerNotificationAlertDecision(
+              notification,
+              preferencesRef.current,
+              false,
+            ).toast,
+        );
         if (newest) {
           setToast(newest);
+          const decision = providerNotificationAlertDecision(
+            newest,
+            preferencesRef.current,
+            false,
+          );
           if (isBookingNotification(newest)) {
-            playSound();
+            if (decision.sound) playSound();
             showTemporaryBookingTitle();
             if (pathnameRef.current.startsWith("/app/appointments")) {
               router.refresh();
@@ -197,64 +384,246 @@ export function ProviderNotificationCenter() {
         }
       }
 
-      payload.notifications.forEach((notification) =>
-        seenIds.current.add(notification.id),
-      );
       unreadCountRef.current = payload.unreadCount;
-      setNotifications(payload.notifications);
       setUnreadCount(payload.unreadCount);
-      initialLoadComplete.current = true;
+      if (
+        statusFilterRef.current === "all" &&
+        categoryFilterRef.current === "all"
+      ) {
+        setLoadError(false);
+        setNotifications((current) => {
+          const merged = mergeProviderNotificationPages(
+            payload.notifications,
+            current,
+          );
+          unreadIdsRef.current = unreadNotificationIds(merged);
+          return merged;
+        });
+        if (!loadedAdditionalPagesRef.current) {
+          setNextCursor(payload.nextCursor);
+        }
+      }
+      if (allowAlerts && fresh.length) {
+        coordinatorRef.current?.publish({
+          type: "invalidate",
+          reason: "notifications",
+        });
+      }
       setLoaded(true);
     } catch {
+      setLoadError(true);
+      setLoaded(true);
       // A próxima execução do polling refaz a tentativa sem interromper o painel.
     } finally {
       requestInFlight.current = false;
+      if (pendingPollRef.current) {
+        const pendingAllowAlerts = pendingPollAllowAlertsRef.current;
+        pendingPollRef.current = false;
+        pendingPollAllowAlertsRef.current = false;
+        window.setTimeout(
+          () => void loadNotificationsRef.current?.(pendingAllowAlerts),
+          0,
+        );
+      }
     }
   }, [playSound, router, showTemporaryBookingTitle]);
+  useEffect(() => {
+    loadNotificationsRef.current = loadNotifications;
+    return () => {
+      loadNotificationsRef.current = null;
+    };
+  }, [loadNotifications]);
+
+  const loadNotificationPage = useCallback(
+    async ({
+      append,
+      cursor,
+      status,
+      category,
+    }: {
+      append: boolean;
+      cursor?: string | null;
+      status: "all" | "unread";
+      category: "all" | "bookings" | "financial" | "system";
+    }) => {
+      const requestId = ++listRequestIdRef.current;
+      if (!append) {
+        setLoaded(false);
+        setLoadError(false);
+        setNotifications([]);
+        unreadIdsRef.current.clear();
+        setNextCursor(null);
+        loadedAdditionalPagesRef.current = false;
+        loadedPageCountRef.current = 1;
+      } else {
+        setLoadingMore(true);
+      }
+      try {
+        const response = await fetch(
+          providerNotificationListUrl({ status, category, cursor }),
+          { cache: "no-store" },
+        );
+        if (!response.ok) throw new Error("notification_page_failed");
+        const payload = (await response.json()) as ProviderNotificationsResponse;
+        if (requestId !== listRequestIdRef.current) return;
+        setNotifications((current) => {
+          if (!append) {
+            unreadIdsRef.current = unreadNotificationIds(payload.notifications);
+            return payload.notifications;
+          }
+          const currentIds = new Set(current.map(({ id }) => id));
+          const merged = [
+            ...current,
+            ...payload.notifications.filter(({ id }) => !currentIds.has(id)),
+          ];
+          unreadIdsRef.current = unreadNotificationIds(merged);
+          return merged;
+        });
+        unreadCountRef.current = payload.unreadCount;
+        setUnreadCount(payload.unreadCount);
+        setNextCursor(payload.nextCursor);
+        loadedAdditionalPagesRef.current =
+          append || loadedAdditionalPagesRef.current;
+        if (append) loadedPageCountRef.current += 1;
+        setLoadError(false);
+      } catch {
+        if (requestId === listRequestIdRef.current) setLoadError(true);
+      } finally {
+        if (requestId === listRequestIdRef.current) {
+          setLoaded(true);
+          setLoadingMore(false);
+        }
+      }
+    },
+    [],
+  );
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    await loadNotificationPage({
+      append: true,
+      cursor: nextCursor,
+      status: statusFilterRef.current,
+      category: categoryFilterRef.current,
+    });
+  }, [loadNotificationPage, loadingMore, nextCursor]);
+
+  const refreshLoadedNotificationPages = useCallback(
+    async ({
+      status,
+      category,
+    }: {
+      status: "all" | "unread";
+      category: "all" | "bookings" | "financial" | "system";
+    }) => {
+      const requestId = ++listRequestIdRef.current;
+      const pageCount = loadedPageCountRef.current;
+      const refreshed: ProviderNotification[] = [];
+      let cursor: string | null = null;
+      let unreadCount = unreadCountRef.current;
+      try {
+        for (let page = 0; page < pageCount; page += 1) {
+          const response = await fetch(
+            providerNotificationListUrl({ status, category, cursor }),
+            { cache: "no-store" },
+          );
+          if (!response.ok) throw new Error("notification_refresh_failed");
+          const payload = (await response.json()) as ProviderNotificationsResponse;
+          if (requestId !== listRequestIdRef.current) return;
+          refreshed.push(...payload.notifications);
+          unreadCount = payload.unreadCount;
+          cursor = payload.nextCursor;
+          if (!cursor) break;
+        }
+        const deduped = Array.from(
+          new Map(refreshed.map((item) => [item.id, item])).values(),
+        );
+        unreadIdsRef.current = unreadNotificationIds(deduped);
+        setNotifications(deduped);
+        unreadCountRef.current = unreadCount;
+        setUnreadCount(unreadCount);
+        setNextCursor(cursor);
+        setLoadError(false);
+      } catch {
+        if (requestId === listRequestIdRef.current) setLoadError(true);
+      }
+    },
+    [],
+  );
+
+  const pollAsVisibleLeader = useCallback(async () => {
+    await loadNotifications(true);
+    if (
+      statusFilterRef.current !== "all" ||
+      categoryFilterRef.current !== "all"
+    ) {
+      await refreshLoadedNotificationPages({
+        status: statusFilterRef.current,
+        category: categoryFilterRef.current,
+      });
+    }
+  }, [loadNotifications, refreshLoadedNotificationPages]);
+
+  useEffect(() => {
+    function synchronize(message: ProviderNotificationCoordinationMessage) {
+      if (message.reason === "preferences") {
+        void refreshPreferences();
+        return;
+      }
+      void loadNotifications(false);
+      if (
+        loadedPageCountRef.current > 1 ||
+        statusFilterRef.current !== "all" ||
+        categoryFilterRef.current !== "all"
+      ) {
+        void refreshLoadedNotificationPages({
+          status: statusFilterRef.current,
+          category: categoryFilterRef.current,
+        });
+      }
+    }
+    const coordinator = createProviderNotificationCoordinator({ tenantId, userId }, synchronize);
+    coordinatorRef.current = coordinator;
+    return () => {
+      coordinator.close();
+      coordinatorRef.current = null;
+    };
+  }, [loadNotifications, refreshLoadedNotificationPages, refreshPreferences, tenantId, userId]);
 
   useEffect(() => {
     baseTitle.current = getBaseTitle(document.title);
-    const soundIsEnabled = window.localStorage.getItem(SOUND_ENABLED_KEY) === "true";
+
+    // Every tab hydrates once without alerts. Only the elected leader polls and
+    // is therefore allowed to emit subsequent toast/sound notifications.
     const initializationId = window.setTimeout(() => {
-      setShowSoundPrompt(
-        !soundIsEnabled &&
-          window.localStorage.getItem(SOUND_PROMPT_DISMISSED_KEY) !== "true",
-      );
+      void refreshPreferences()
+        .then((nextPreferences) => {
+          if (!nextPreferences) return;
+          setShowSoundPrompt(
+            !nextPreferences.soundEnabled &&
+              window.localStorage.getItem(soundPromptDismissedKey) !== "true",
+          );
+        })
+        .finally(() => setPreferencesLoaded(true));
+      void loadNotifications(false);
     }, 0);
-
-    void fetch("/api/provider/notifications/preferences", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const payload = (await response.json()) as {
-          preferences: ProviderNotificationPreferences;
-          hasStoredPreferences?: boolean;
-        };
-        const nextPreferences =
-          !payload.hasStoredPreferences && soundIsEnabled
-            ? { ...payload.preferences, soundEnabled: true }
-            : payload.preferences;
-        preferencesRef.current = nextPreferences;
-        if (!payload.hasStoredPreferences && soundIsEnabled) {
-          void fetch("/api/provider/notifications/preferences", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ soundEnabled: true }),
-          });
-        }
-      })
-      .catch(() => undefined);
-
-    void loadNotifications();
     const intervalId = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadNotifications();
+      if (
+        document.visibilityState === "visible" &&
+        (coordinatorRef.current?.isLeader() ?? true)
+      ) void pollAsVisibleLeader();
     }, POLLING_INTERVAL_MS);
-    const onFocus = () => void loadNotifications();
+    const onFocus = () => {
+      if (coordinatorRef.current?.isLeader() ?? true) {
+        void pollAsVisibleLeader();
+      }
+    };
     window.addEventListener("focus", onFocus);
 
     return () => {
       window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
       window.clearTimeout(initializationId);
+      window.removeEventListener("focus", onFocus);
       if (titleTimer.current) window.clearTimeout(titleTimer.current);
       if (agendaHighlightTimer.current) {
         window.clearTimeout(agendaHighlightTimer.current);
@@ -262,7 +631,7 @@ export function ProviderNotificationCenter() {
       temporaryTitleActive.current = false;
       if (baseTitle.current) document.title = baseTitle.current;
     };
-  }, [loadNotifications]);
+  }, [loadNotifications, pollAsVisibleLeader, refreshPreferences, soundPromptDismissedKey]);
 
   useEffect(() => {
     unreadCountRef.current = unreadCount;
@@ -275,6 +644,23 @@ export function ProviderNotificationCenter() {
   }, [currentDate, pathname]);
 
   useEffect(() => {
+    statusFilterRef.current = statusFilter;
+    categoryFilterRef.current = categoryFilter;
+    if (!filterInitializedRef.current) {
+      filterInitializedRef.current = true;
+      return;
+    }
+    const filterLoadId = window.setTimeout(() => {
+      void loadNotificationPage({
+        append: false,
+        status: statusFilter,
+        category: categoryFilter,
+      });
+    }, 0);
+    return () => window.clearTimeout(filterLoadId);
+  }, [categoryFilter, loadNotificationPage, statusFilter]);
+
+  useEffect(() => {
     const titleSyncId = window.setTimeout(() => {
       const nextBaseTitle = getBaseTitle(document.title);
       if (nextBaseTitle) baseTitle.current = nextBaseTitle;
@@ -285,11 +671,40 @@ export function ProviderNotificationCenter() {
 
   useEffect(() => {
     if (!drawerOpen) return;
+    const dialog = drawerRef.current;
+    const focusable = () =>
+      dialog
+        ? Array.from(
+            dialog.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          )
+        : [];
+    focusable()[0]?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrawerOpen(false);
+      if (event.key === "Escape") {
+        setDrawerOpen(false);
+        openerRef.current?.focus();
+      }
+      if (event.key === "Tab") {
+        const items = focusable();
+        if (!items.length) return;
+        const first = items[0];
+        const last = items.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      openerRef.current?.focus();
+    };
   }, [drawerOpen]);
 
   useEffect(() => {
@@ -305,25 +720,40 @@ export function ProviderNotificationCenter() {
         { method: "PATCH" },
       ).catch(() => null);
       if (!response?.ok) {
-        void loadNotifications();
+        void loadNotifications(false);
         return false;
       }
 
+      const readAt = new Date().toISOString();
       setNotifications((current) =>
         current.map((notification) =>
           notification.id === notificationId && !notification.readAt
-            ? { ...notification, readAt: new Date().toISOString() }
+            ? { ...notification, readAt }
             : notification,
         ),
       );
-      setUnreadCount((current) => {
-        const next = Math.max(0, current - 1);
+      if (consumeUnreadTransition(unreadIdsRef.current, notificationId)) {
+        const next = Math.max(0, unreadCountRef.current - 1);
         unreadCountRef.current = next;
-        return next;
+        setUnreadCount(next);
+      }
+      coordinatorRef.current?.publish({
+        type: "invalidate",
+        reason: "notifications",
       });
+      void loadNotifications(false);
+      if (
+        statusFilterRef.current !== "all" ||
+        categoryFilterRef.current !== "all"
+      ) {
+        void refreshLoadedNotificationPages({
+          status: statusFilterRef.current,
+          category: categoryFilterRef.current,
+        });
+      }
       return true;
     },
-    [loadNotifications],
+    [loadNotifications, refreshLoadedNotificationPages],
   );
 
   const markAllRead = useCallback(async () => {
@@ -331,7 +761,7 @@ export function ProviderNotificationCenter() {
       method: "PATCH",
     }).catch(() => null);
     if (!response?.ok) {
-      void loadNotifications();
+      void loadNotifications(false);
       return;
     }
 
@@ -342,9 +772,22 @@ export function ProviderNotificationCenter() {
         readAt: notification.readAt ?? readAt,
       })),
     );
-    unreadCountRef.current = 0;
-    setUnreadCount(0);
-  }, [loadNotifications]);
+    unreadIdsRef.current.clear();
+    coordinatorRef.current?.publish({
+      type: "invalidate",
+      reason: "notifications",
+    });
+    await loadNotifications(false);
+    if (
+      statusFilterRef.current !== "all" ||
+      categoryFilterRef.current !== "all"
+    ) {
+      await refreshLoadedNotificationPages({
+        status: statusFilterRef.current,
+        category: categoryFilterRef.current,
+      });
+    }
+  }, [loadNotifications, refreshLoadedNotificationPages]);
 
   const openNotification = useCallback(
     async (notification: ProviderNotification) => {
@@ -357,29 +800,27 @@ export function ProviderNotificationCenter() {
   );
 
   const visibleNotifications = notifications.filter((notification) => {
-    if (filter === "unread") return !notification.readAt;
-    if (filter === "all") return true;
-    return notificationGroup(notification) === filter;
+    if (statusFilter === "unread" && notification.readAt) return false;
+    return (
+      categoryFilter === "all" ||
+      notificationGroup(notification) === categoryFilter
+    );
   });
 
   return (
-    <>
-      <div className="fixed right-4 top-4 z-[55] sm:right-6 sm:top-5">
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          className="relative grid size-10 place-items-center rounded-xl border border-border bg-card text-muted-foreground shadow-card transition-colors hover:border-primary/30 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          aria-label="Abrir notificações"
-          title="Notificações"
-        >
-          <Bell className="size-4" />
-          {unreadCount > 0 ? (
-            <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-primary-foreground ring-2 ring-background">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          ) : null}
-        </button>
-      </div>
+    <NotificationCenterContext.Provider
+      value={{
+        unreadCount,
+        open: openNotifications,
+        preferences,
+        preferencesLoaded,
+        soundFeedback,
+        updatePreference,
+        testSound,
+      }}
+    >
+      {children}
+      <p className="sr-only" aria-live="polite">{soundFeedback}</p>
 
       {agendaHighlightVisible && pathname.startsWith("/app/appointments") ? (
         <div className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-xl border border-primary/25 bg-primary-soft px-4 py-2 text-sm font-medium text-primary shadow-card">
@@ -388,7 +829,12 @@ export function ProviderNotificationCenter() {
       ) : null}
 
       {toast ? (
-        <div className="fixed bottom-5 right-4 z-[70] w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-2xl border border-border bg-card shadow-elevated sm:right-6">
+        <div
+          className="fixed bottom-5 right-4 z-[70] w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-2xl border border-border bg-card shadow-elevated sm:right-6"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           <div
             className={cn(
               "absolute inset-y-0 left-0 w-1",
@@ -399,7 +845,7 @@ export function ProviderNotificationCenter() {
           />
           <div className="flex gap-3 p-4 pl-5">
             <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary">
-              <CalendarCheck2 className="size-4" />
+              <NotificationTypeIcon notification={toast} />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">{toast.title}</p>
@@ -412,14 +858,14 @@ export function ProviderNotificationCenter() {
                   onClick={() => void openNotification(toast)}
                   className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 >
-                  Ver agendamento <ChevronRight className="size-4" />
+                  {notificationActionLabel(toast)} <ChevronRight className="size-4" />
                 </button>
               ) : null}
             </div>
             <button
               type="button"
               onClick={() => setToast(null)}
-              className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="grid size-10 shrink-0 place-items-center rounded-xl text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               aria-label="Fechar aviso"
             >
               <X className="size-4" />
@@ -429,7 +875,7 @@ export function ProviderNotificationCenter() {
       ) : null}
 
       {showSoundPrompt ? (
-        <div className="fixed bottom-5 left-4 z-[65] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-border bg-card p-4 shadow-elevated sm:left-6">
+        <div className="fixed left-4 top-20 z-[65] w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-border bg-card p-4 shadow-elevated sm:bottom-5 sm:left-6 sm:top-auto">
           <div className="flex gap-3">
             <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary">
               <Volume2 className="size-4" />
@@ -439,29 +885,17 @@ export function ProviderNotificationCenter() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Receba um aviso quando um novo agendamento chegar pelo link público.
               </p>
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   type="button"
                   onClick={() => {
-                    const audio = new Audio("/sounds/new-booking.mp3");
-                    audio.volume = 0.1;
-                    void audio.play().catch(() => undefined);
-                    window.localStorage.setItem(SOUND_ENABLED_KEY, "true");
                     window.localStorage.setItem(
-                      SOUND_PROMPT_DISMISSED_KEY,
+                      soundPromptDismissedKey,
                       "true",
                     );
-                    const nextPreferences = {
-                      ...preferencesRef.current,
-                      soundEnabled: true,
-                    };
-                    preferencesRef.current = nextPreferences;
-                    void fetch("/api/provider/notifications/preferences", {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ soundEnabled: true }),
-                    });
+                    void testSound();
+                    void updatePreference("soundEnabled", true);
                     setShowSoundPrompt(false);
                   }}
                 >
@@ -473,7 +907,7 @@ export function ProviderNotificationCenter() {
                   type="button"
                   onClick={() => {
                     window.localStorage.setItem(
-                      SOUND_PROMPT_DISMISSED_KEY,
+                      soundPromptDismissedKey,
                       "true",
                     );
                     setShowSoundPrompt(false);
@@ -496,43 +930,73 @@ export function ProviderNotificationCenter() {
             aria-label="Fechar notificações"
           />
           <aside
+            ref={drawerRef}
             className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-border bg-card shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="Central de notificações"
           >
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h2 className="text-lg font-semibold">Notificações</h2>
-                <p className="text-xs text-muted-foreground">
-                  Eventos importantes do seu negócio.
-                </p>
+            <div className="border-b border-border px-4 py-3 min-[360px]:px-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold">Notificações</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {unreadCount === 0
+                      ? "Nenhuma não lida"
+                      : `${unreadCount} ${unreadCount === 1 ? "não lida" : "não lidas"}`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="grid size-10 shrink-0 place-items-center rounded-xl text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label="Fechar"
+                >
+                  <X className="size-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(false)}
-                className="grid size-9 place-items-center rounded-xl text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                aria-label="Fechar"
-              >
-                <X className="size-4" />
-              </button>
+              <div className="mt-2 flex min-h-10 items-center justify-between gap-2">
+                {unreadCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => void markAllRead()}
+                    className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  >
+                    <CheckCheck className="size-4" /> Ler todas
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPreferencesOpen((current) => !current)}
+                  aria-expanded={preferencesOpen}
+                  aria-controls="notification-inline-preferences"
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-xl px-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                >
+                  <Settings2 className="size-4" /> Preferências
+                </button>
+              </div>
             </div>
-            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
-              <div className="flex gap-1 rounded-xl bg-muted p-1">
-                {([
-                  ["all", "Todas"],
-                  ["unread", "Não lidas"],
-                  ["bookings", "Agendamentos"],
-                  ["financial", "Financeiro"],
-                  ["system", "Sistema"],
-                ] as const).map(([value, label]) => (
+            {preferencesOpen ? (
+              <div
+                id="notification-inline-preferences"
+                className="max-h-[45vh] overflow-y-auto border-b border-border bg-muted/20 p-4"
+              >
+                <NotificationPreferenceControls compact />
+              </div>
+            ) : null}
+            <div className="flex flex-col gap-2 border-b border-border px-4 py-3 min-[360px]:px-5 min-[380px]:flex-row min-[380px]:items-center">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex shrink-0 gap-1 rounded-xl bg-muted p-1">
+                {([ ["all", "Todas"], ["unread", "Não lidas"] ] as const).map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setFilter(value)}
+                    onClick={() => setStatusFilter(value)}
                     className={cn(
                       "rounded-lg px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
-                      filter === value
+                      statusFilter === value
                         ? "bg-card text-foreground shadow-sm"
                         : "text-muted-foreground",
                     )}
@@ -540,58 +1004,100 @@ export function ProviderNotificationCenter() {
                     {label}
                   </button>
                 ))}
-              </div>
-              {unreadCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => void markAllRead()}
-                  className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                </div>
+                <select
+                  value={categoryFilter}
+                  onChange={(event) =>
+                    setCategoryFilter(
+                      event.target.value as typeof categoryFilter,
+                    )
+                  }
+                  className="min-w-0 flex-1 rounded-xl border border-border bg-background px-2 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label="Filtrar por categoria"
                 >
-                  <CheckCheck className="size-4" /> Ler todas
-                </button>
-              ) : null}
+                  <option value="all">Todas as categorias</option>
+                  <option value="bookings">Agendamentos</option>
+                  <option value="financial">Financeiro</option>
+                  <option value="system">Sistema</option>
+                </select>
+              </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {!loaded ? (
+              {!loaded && !loadError ? (
                 <div className="grid place-items-center py-12 text-sm text-muted-foreground">
                   <LoaderCircle className="mb-2 size-5 animate-spin" />
                   Carregando notificações...
                 </div>
               ) : null}
-              {loaded && !visibleNotifications.length ? (
+              {loaded && !loadError && !visibleNotifications.length ? (
                 <div className="px-8 py-16 text-center">
                   <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary">
                     <Bell className="size-5" />
                   </span>
                   <p className="mt-4 font-semibold">
-                    Nenhuma notificação por enquanto
+                    {statusFilter !== "all" || categoryFilter !== "all"
+                      ? "Nenhuma notificação neste filtro"
+                      : "Nenhuma notificação por enquanto"}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Quando novos agendamentos e avisos importantes chegarem,
-                    eles aparecerão aqui.
+                    {statusFilter !== "all" || categoryFilter !== "all"
+                      ? "Altere os filtros para consultar outros avisos."
+                      : "Quando novos agendamentos e avisos importantes chegarem, eles aparecerão aqui."}
                   </p>
                 </div>
               ) : null}
-              {visibleNotifications.map((notification) => (
+              {loadError && !notifications.length ? (
+                <div className="px-8 py-12 text-center" role="alert">
+                  <p className="font-semibold">Não foi possível carregar</p>
+                  <Button className="mt-3" size="sm" variant="outline" onClick={() => void loadNotifications(false)}>
+                    Tentar novamente
+                  </Button>
+                </div>
+              ) : null}
+              {visibleNotifications.map((notification, index) => (
+                <Fragment key={notification.id}>
+                {index === 0 || notificationDateGroup(notification.createdAt) !==
+                notificationDateGroup(visibleNotifications[index - 1]?.createdAt ?? "") ? (
+                  <p className="border-b border-border bg-muted/30 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {notificationDateGroup(notification.createdAt)}
+                  </p>
+                ) : null}
                 <div
-                  key={notification.id}
                   onClick={() => {
-                    if (!notification.readAt) void markRead(notification.id);
-                  }}
-                  onKeyDown={(event) => {
-                    if (
-                      !notification.readAt &&
-                      (event.key === "Enter" || event.key === " ")
-                    ) {
-                      event.preventDefault();
+                    if (notification.actionUrl) {
+                      void openNotification(notification);
+                    } else if (!notification.readAt) {
                       void markRead(notification.id);
                     }
                   }}
-                  role={!notification.readAt ? "button" : undefined}
-                  tabIndex={!notification.readAt ? 0 : undefined}
+                  onKeyDown={(event) => {
+                    if (
+                      (notification.actionUrl || !notification.readAt) &&
+                      (event.key === "Enter" || event.key === " ")
+                    ) {
+                      event.preventDefault();
+                      if (notification.actionUrl) {
+                        void openNotification(notification);
+                      } else {
+                        void markRead(notification.id);
+                      }
+                    }
+                  }}
+                  role={
+                    notification.actionUrl || !notification.readAt
+                      ? "button"
+                      : undefined
+                  }
+                  tabIndex={
+                    notification.actionUrl || !notification.readAt
+                      ? 0
+                      : undefined
+                  }
                   className={cn(
                     "border-b border-border px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30",
                     !notification.readAt && "bg-primary/[0.035]",
+                    (notification.actionUrl || !notification.readAt) &&
+                      "cursor-pointer hover:bg-muted/60",
                   )}
                 >
                   <div className="flex gap-3">
@@ -601,6 +1107,9 @@ export function ProviderNotificationCenter() {
                         !notification.readAt ? "bg-primary" : "bg-transparent",
                       )}
                     />
+                    <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
+                      <NotificationTypeIcon notification={notification} />
+                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold">{notification.title}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
@@ -612,68 +1121,72 @@ export function ProviderNotificationCenter() {
                           ? " · Link público"
                           : ""}
                       </p>
-                      {notification.actionUrl ? (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openNotification(notification);
-                          }}
-                          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                        >
-                          Ver agendamento <ChevronRight className="size-4" />
-                        </button>
-                      ) : null}
                     </div>
+                    {notification.actionUrl ? (
+                      <ChevronRight
+                        className="mt-2 size-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                    ) : null}
                   </div>
                 </div>
+                </Fragment>
               ))}
+              {nextCursor ? (
+                <div className="p-4 text-center">
+                  <Button variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>
+                    {loadingMore ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : null}
+                    Carregar mais
+                  </Button>
+                </div>
+              ) : loaded && notifications.length ? (
+                <p className="px-5 py-4 text-center text-xs text-muted-foreground">Fim das notificações.</p>
+              ) : null}
             </div>
           </aside>
         </div>
       ) : null}
-    </>
+    </NotificationCenterContext.Provider>
   );
 }
 
-export function NotificationSoundSettings() {
-  const [preferences, setPreferences] = useState<ProviderNotificationPreferences>(
-    DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
+export function ProviderNotificationTrigger({ compact = false }: { compact?: boolean }) {
+  const center = useContext(NotificationCenterContext);
+  if (!center) return null;
+  return (
+    <button
+      type="button"
+      onClick={(event) => center.open(event.currentTarget)}
+      className={cn(
+        "group relative flex items-center rounded-2xl text-sm text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+        compact ? "size-10 justify-center border border-border bg-card shadow-sm" : "w-full gap-3 px-2.5 py-2",
+      )}
+      aria-label={`Abrir notificações${center.unreadCount ? `, ${center.unreadCount} não lidas` : ""}`}
+      title="Notificações"
+    >
+      <span className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-muted/70 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary">
+        <Bell className="size-4" />
+        {center.unreadCount > 0 ? (
+          <span className="absolute -right-1.5 -top-1.5 grid min-w-5 place-items-center rounded-full bg-primary px-1 py-0.5 text-[10px] font-bold leading-none text-primary-foreground ring-2 ring-background">
+            {center.unreadCount > 9 ? "9+" : center.unreadCount}
+          </span>
+        ) : null}
+      </span>
+      {!compact ? <span className="font-semibold">Notificações</span> : null}
+    </button>
   );
-  const [loaded, setLoaded] = useState(false);
+}
 
-  useEffect(() => {
-    void fetch("/api/provider/notifications/preferences", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const payload = (await response.json()) as {
-          preferences: ProviderNotificationPreferences;
-        };
-        setPreferences(payload.preferences);
-      })
-      .catch(() => undefined)
-      .finally(() => setLoaded(true));
-  }, []);
-
-  function update(
-    key: keyof ProviderNotificationPreferences,
-    value: boolean,
-  ) {
-    const previous = preferences;
-    const next = { ...preferences, [key]: value };
-    setPreferences(next);
-    window.localStorage.setItem(SOUND_PROMPT_DISMISSED_KEY, "true");
-    if (key === "soundEnabled") {
-      window.localStorage.setItem(SOUND_ENABLED_KEY, String(value));
-    }
-    void fetch("/api/provider/notifications/preferences", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [key]: value }),
-    }).then((response) => {
-      if (!response.ok) setPreferences(previous);
-    }).catch(() => setPreferences(previous));
-  }
+function NotificationPreferenceControls({ compact = false }: { compact?: boolean }) {
+  const center = useContext(NotificationCenterContext);
+  if (!center) return null;
+  const {
+    preferences,
+    preferencesLoaded,
+    soundFeedback,
+    testSound,
+    updatePreference,
+  } = center;
 
   const items: {
     key: keyof ProviderNotificationPreferences;
@@ -713,13 +1226,19 @@ export function NotificationSoundSettings() {
   ];
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-card">
+    <section
+      className={cn(
+        !compact && "rounded-2xl border border-border bg-card p-5 shadow-card",
+      )}
+    >
       <div className="flex items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary">
           {preferences.soundEnabled ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold">Notificações</h2>
+          <h2 className="font-semibold">
+            {compact ? "Alertas desta conta" : "Notificações"}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Defina como o painel deve avisar sobre novos agendamentos e pendências importantes.
           </p>
@@ -745,8 +1264,10 @@ export function NotificationSoundSettings() {
                   <input
                     type="checkbox"
                     checked={preferences[item.key]}
-                    disabled={disabled || !loaded}
-                    onChange={(event) => update(item.key, event.target.checked)}
+                    disabled={disabled || !preferencesLoaded}
+                    onChange={(event) =>
+                      void updatePreference(item.key, event.target.checked)
+                    }
                     className="size-4 shrink-0 accent-primary"
                     aria-label={item.label}
                   />
@@ -754,8 +1275,27 @@ export function NotificationSoundSettings() {
               );
             })}
           </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void testSound()}
+            >
+              <Volume2 className="mr-2 size-4" /> Testar som
+            </Button>
+            {soundFeedback ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                {soundFeedback}
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
     </section>
   );
+}
+
+export function NotificationSoundSettings() {
+  return <NotificationPreferenceControls />;
 }

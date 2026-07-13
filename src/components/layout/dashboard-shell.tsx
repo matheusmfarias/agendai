@@ -7,7 +7,10 @@ import { Menu, UserRound } from "lucide-react";
 import { AgendaiLogo } from "@/components/brand/agendai-logo";
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
-import { ProviderNotificationCenter } from "@/features/provider-notifications/components/provider-notification-center";
+import {
+  ProviderNotificationCenter,
+  ProviderNotificationTrigger,
+} from "@/features/provider-notifications/components/provider-notification-center";
 import {
   ProviderAgendaSkeleton,
   ProviderAvailabilitySkeleton,
@@ -39,7 +42,7 @@ type DashboardShellProps = {
     email: string;
   };
   initialSidebarCollapsed?: boolean;
-  providerNotificationsEnabled?: boolean;
+  providerNotificationContext?: { tenantId: string; userId: string };
 };
 
 const SIDEBAR_STORAGE_KEY = "agenda-zap-sidebar-collapsed";
@@ -106,7 +109,7 @@ export function DashboardShell({
   sidebarSubtitle,
   sidebarUser,
   initialSidebarCollapsed = true,
-  providerNotificationsEnabled = false,
+  providerNotificationContext,
 }: DashboardShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -141,7 +144,7 @@ export function DashboardShell({
     finishRouteTransition();
   }, [pathname]);
 
-  return (
+  const content = (
     <div className="min-h-screen bg-background">
       <div
         className={`fixed inset-x-0 top-0 z-[90] h-0.5 origin-left bg-primary transition-transform duration-200 ${
@@ -158,8 +161,12 @@ export function DashboardShell({
         onToggleCollapsed={toggleSidebar}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
+        notificationTrigger={
+          providerNotificationContext ? (
+            <ProviderNotificationTrigger compact={sidebarCollapsed} />
+          ) : null
+        }
       />
-      {providerNotificationsEnabled ? <ProviderNotificationCenter /> : null}
       <div
         className={`transition-[padding] duration-300 ease-out ${
           sidebarCollapsed ? "lg:pl-[5.5rem]" : "lg:pl-[17rem]"
@@ -175,12 +182,14 @@ export function DashboardShell({
             <Menu className="size-5" />
           </button>
           <LinkLogo />
-          <div
-            className="grid size-10 place-items-center rounded-2xl border border-border bg-card text-primary shadow-sm"
-            title={user.name}
-          >
-            <UserRound className="size-5" />
-          </div>
+          {providerNotificationContext ? <ProviderNotificationTrigger compact /> : (
+            <div
+              className="grid size-10 place-items-center rounded-2xl border border-border bg-card text-primary shadow-sm"
+              title={user.name}
+            >
+              <UserRound className="size-5" />
+            </div>
+          )}
         </header>
         {showHeader ? (
           <div className="hidden lg:block">
@@ -201,6 +210,15 @@ export function DashboardShell({
       </div>
     </div>
   );
+
+  return providerNotificationContext ? (
+    <ProviderNotificationCenter
+      tenantId={providerNotificationContext.tenantId}
+      userId={providerNotificationContext.userId}
+    >
+      {content}
+    </ProviderNotificationCenter>
+  ) : content;
 }
 
 function LinkLogo() {

@@ -69,6 +69,7 @@ type DashboardSidebarProps = {
   onToggleCollapsed?: () => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  notificationTrigger?: React.ReactNode;
 };
 
 function getUserInitials(value: string) {
@@ -128,6 +129,7 @@ export function DashboardSidebar({
   onToggleCollapsed,
   mobileOpen = false,
   onCloseMobile,
+  notificationTrigger,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -263,8 +265,18 @@ export function DashboardSidebar({
           const isActive = itemActive || Boolean(childActive);
 
           return (
+            <div key={item.href}>
+            {item.label === "Configurações" && notificationTrigger ? (
+              <div
+                className={cn(
+                  "mb-1 hidden lg:block",
+                  collapsed && "lg:flex lg:justify-center",
+                )}
+              >
+                {notificationTrigger}
+              </div>
+            ) : null}
             <div
-              key={item.href}
               className={cn(
                 "group/nav relative shrink-0 transition-all duration-300 ease-out lg:translate-y-0 lg:opacity-100",
                 collapsed && "lg:flex lg:w-full lg:justify-center",
@@ -393,6 +405,7 @@ export function DashboardSidebar({
                   )}
                 </div>
               ) : null}
+            </div>
             </div>
           );
         })}

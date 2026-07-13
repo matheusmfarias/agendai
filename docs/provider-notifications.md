@@ -4,16 +4,20 @@
 
 O módulo de notificações permite que o prestador acompanhe eventos operacionais no painel, com foco inicial nos agendamentos feitos pelo link público. Ele oferece uma central de notificações, badge de não lidas, toast, som opcional e navegação direta para o agendamento relacionado.
 
-O MVP usa polling. Não há WebSocket, Server-Sent Events, push notification nativa, e-mail ou WhatsApp neste módulo.
+O MVP usa polling coordenado entre abas por `BroadcastChannel`, com fallback em
+`localStorage` e eleição simples de líder. Não há WebSocket, Server-Sent Events,
+push notification nativa, e-mail ou WhatsApp neste módulo.
 
 ## Eventos gerados atualmente
 
-O sistema possui tipos preparados para eventos futuros, mas cria notificações apenas para agendamentos públicos persistidos com sucesso:
+O sistema possui tipos preparados para eventos futuros e cria notificações em
+três producers transacionais:
 
 | Situação | Tipo | Prioridade |
 | --- | --- | --- |
 | Serviço com confirmação automática (`BookingMode.DIRECT`) | `public_booking_created` | `medium` |
 | Serviço que exige confirmação manual (`BookingMode.REQUIRES_CONFIRMATION`) | `booking_confirmation_required` | `high` |
+| Atendimento finalizado sem lançamento financeiro pago | `payment_pending` | `medium` |
 
 Agendamentos públicos informativos (`BookingMode.INFORMATIONAL`) não criam notificação neste MVP.
 
@@ -40,13 +44,15 @@ O model está em `prisma/schema.prisma` e usa o conceito de `Tenant`, que é o e
 | --- | --- |
 | `id` | UUID da notificação. |
 | `tenantId` | Tenant dono da notificação. É obrigatório. |
-| `recipientUserId` | Usuário destinatário opcional. Quando é nulo, a notificação é compartilhada com os usuários do tenant. |
+| `audience` | `TENANT` para broadcast ou `USER` para entrega privada. |
+| `recipientUserId` | Obrigatório apenas para audience `USER`; referencia membership do mesmo tenant. |
+| `dedupeKey` | Chave determinística que inclui audience e recipient. |
 | `type` | Tipo funcional da notificação. |
 | `priority` | `low`, `medium`, `high` ou `critical`. |
 | `title` e `description` | Texto apresentado no drawer e no toast. |
 | `entityType` e `entityId` | Referência opcional à entidade relacionada. Para o MVP, usam `appointment` e o id do agendamento. |
 | `actionUrl` | URL interna para abrir o contexto relacionado. |
-| `readAt` | Data da leitura. `null` significa não lida. |
+| `readAt` | Campo legado preservado, sem novas escritas. |
 | `archivedAt` | Data de arquivamento. Arquivadas não são retornadas pela API padrão. |
 | `metadata` | Dados auxiliares serializáveis para apresentação e roteamento. |
 | `createdAt` e `updatedAt` | Datas de criação e atualização. |
@@ -54,14 +60,27 @@ O model está em `prisma/schema.prisma` e usa o conceito de `Tenant`, que é o e
 Relações e remoções:
 
 - A notificação pertence a um `Tenant` com `onDelete: Cascade`.
-- O destinatário opcional pertence a `User` com `onDelete: SetNull`.
-- Há índices para `tenantId + createdAt`, `tenantId + readAt`, `tenantId + type` e `recipientUserId`.
+- Destinatário privado referencia `(tenantId, userId)` de `TenantUser` com
+  `onDelete: Cascade`; remover membership remove a notificação privada.
+- Leituras ficam em `ProviderNotificationRead`, uma receipt por
+  notificação/tenant/usuário, com FKs compostas tenant-safe e cascade.
+- Broadcast legado marcado em `readAt` não recebe fanout. Apenas leitura privada
+  legada com recipient conhecido recebe receipt no backfill.
+
+Antes desta alteração, a relação opcional de recipient usava `SET NULL`. O código
+versionado não possuía producers privados, mas isso não prova que todos os dados
+históricos de cada ambiente sejam broadcasts. O gate pré-deploy deve auditar
+notificações com recipient e histórico da aplicação. Registros privados sem
+membership comprovada devem ser arquivados ou expurgados somente com evidência;
+jamais convertidos automaticamente em broadcast, atribuídos a outro usuário ou
+distribuídos por fanout.
 
 ## Deduplicação
 
-Existe uma restrição única em `tenantId + type + entityId`.
+Existe uma restrição única em `tenantId + dedupeKey`.
 
-Para notificações que possuem `entityId`, `createProviderNotification` usa `upsert`. Assim, a mesma combinação de tenant, tipo de evento e agendamento retorna a notificação existente em vez de criar outra.
+`createProviderNotification` usa `upsert`. A chave inclui audience, recipient,
+tipo, entidade e id da entidade, impedindo colisão entre broadcast e privado.
 
 O fluxo público usa `entityType: "appointment"` e o id do agendamento como `entityId`. Isso evita duplicidade para o mesmo agendamento público caso a criação da notificação seja reexecutada.
 
@@ -73,7 +92,23 @@ Toda leitura e atualização aplica simultaneamente:
 
 - `tenantId` do contexto ativo;
 - `archivedAt: null`;
-- `recipientUserId: null` ou `recipientUserId` igual ao usuário autenticado.
+- audience `TENANT` sem recipient ou audience `USER` com recipient igual ao
+  usuário autenticado;
+- receipt filtrada por `(tenantId, userId)`.
+
+Notificações privadas validam membership e usuário ativos antes do upsert.
+Todo producer informa audience explicitamente: `TENANT` rejeita a presença de
+recipient e `USER` exige UUID válido e membership ativo. Contradições nunca são
+normalizadas silenciosamente para broadcast.
+`actionUrl` aceita exclusivamente caminho interno sob `/app`, sem host,
+protocolo ou barra invertida. IDs e cursores são validados como UUID no boundary.
+
+## Durabilidade dos producers
+
+Booking público e `payment_pending` ao finalizar atendimento sem pagamento
+persistem a notificação dentro da mesma `Prisma.TransactionClient` da mudança
+de domínio. Não existe gravação best-effort pós-commit: falha no upsert aborta a
+transação, e retry é seguro pela `dedupeKey`.
 
 Por isso, um usuário não consegue listar ou marcar como lida uma notificação de outro tenant, nem uma notificação privada destinada a outro usuário.
 
@@ -109,10 +144,14 @@ Query params opcionais:
 | --- | --- |
 | `status` | `all` (padrão), `unread` ou `read` |
 | `type` | Um tipo de notificação suportado |
+| `category` | `bookings`, `financial` ou `system` |
 | `limit` | De 1 a 30, com padrão 20 |
 | `cursor` | Id retornado em `nextCursor` |
 
-A lista é ordenada por `createdAt desc` e `id desc`. O cursor é validado no escopo do tenant e destinatário atual antes de ser usado.
+A lista é ordenada por `createdAt desc` e `id desc`. O cursor é validado pelos
+campos estáveis de tenant, destinatário, tipo e categoria. O estado de leitura
+não participa dessa validação, portanto marcar o cursor como lido não quebra a
+próxima página de um filtro `unread`.
 
 Resposta:
 
@@ -134,17 +173,20 @@ Retorna `404` quando a notificação não pertence ao escopo atual ou não exist
 
 `PATCH /api/provider/notifications/read-all`
 
-Atualiza apenas notificações não arquivadas e não lidas do tenant e destinatário atual.
+Atualiza apenas notificações não arquivadas e não lidas do tenant e destinatário
+atual. Depois do sucesso, a interface refaz a consulta autenticada; ela não
+presume contador zero, pois um evento pode ser criado concorrentemente.
 
 ## Integração com agendamento público
 
 O fluxo está em `src/features/public-booking/public-booking-service.ts`.
 
 1. O agendamento, valores personalizados, eventos e log de auditoria são gravados dentro da transação serializável existente.
-2. A transação retorna os dados necessários para a notificação somente após o agendamento ter sido persistido.
-3. Depois do commit, o serviço tenta criar a notificação em um `try/catch` seguro.
+2. A notificação é criada na mesma transação com o mesmo `Prisma.TransactionClient`.
+3. O upsert usa dedupe determinística, portanto uma repetição segura não duplica o evento.
 
-Com isso, uma falha de notificação não cancela nem devolve erro para o agendamento do cliente. O erro é registrado sem incluir dados sensíveis no log.
+Com isso, uma falha de notificação aborta a transação inteira e nunca deixa o
+agendamento confirmado sem o aviso durável correspondente.
 
 A ação gerada para novos agendamentos aponta para uma rota real do projeto:
 
@@ -157,14 +199,20 @@ A ação gerada para novos agendamentos aponta para uma rota real do projeto:
 A central é montada somente pelo layout do prestador. O painel administrativo e páginas públicas não iniciam polling.
 
 - Consulta `GET /api/provider/notifications?limit=20` ao montar.
-- Executa a cada 30 segundos somente quando a aba está visível.
+- Executa a cada 30 segundos somente quando a aba líder está visível.
 - Consulta imediatamente quando a janela volta a receber foco.
 - Impede requisições concorrentes.
 - Limpa intervalos, listeners e timers no unmount.
 - Erros de rede são silenciosos e a próxima execução tenta novamente.
 - A carga inicial apenas popula a central. Não exibe toast nem toca som para notificações antigas.
 
-Os ids já vistos são mantidos em memória para impedir toast e som duplicados na sessão atual.
+Uma coordenação por `BroadcastChannel`, com fallback em `localStorage`, elege uma
+única aba **visível** por tenant e usuário. A aba oculta libera o lease e não o
+renova. Cada aba faz sua própria hidratação autenticada e silenciosa. O canal
+transporta somente invalidações enumeradas (`notifications` ou `preferences`),
+sem DTO, título, descrição, metadata ou URL; ao recebê-las, a aba consulta o
+servidor novamente. Mensagens são validadas em runtime. Os ids vistos são locais
+a cada aba, impedindo que uma aba avance a janela de alertas de outra.
 
 ## Drawer, badge, toast e título da aba
 
@@ -174,9 +222,17 @@ O sino mostra `unreadCount`. O badge não aparece quando o valor é zero e mostr
 
 ### Drawer
 
-O drawer lateral possui filtros `Todas` e `Não lidas`, estado vazio, leitura individual, leitura em massa, foco visível e fechamento por botão, clique no backdrop ou tecla `Escape`.
+O drawer lateral combina no servidor os filtros primários `Todas` e `Não lidas` com a
+categoria `Todas`, `Agendamentos`, `Financeiro` ou `Sistema`. Possui estados
+vazio e vazio por filtro, leitura individual, leitura em massa, foco visível e
+fechamento por botão, clique no backdrop ou tecla `Escape`. A paginação por
+cursor mantém páginas anteriores durante polling e suporta listas acima de 20
+itens. Preferências ficam disponíveis inline para qualquer membership ativo,
+inclusive `OPERATOR`.
 
-Abrir o drawer não marca tudo como lido. Um item não lido é marcado ao ser ativado; a ação `Ver agendamento` também marca o item antes de navegar.
+Abrir o drawer não marca tudo como lido. Um item sem destino é marcado ao ser
+ativado; quando há `actionUrl`, a linha inteira é acionável por ponteiro ou
+teclado, marca a leitura e navega para o contexto correto.
 
 ### Toast
 
@@ -198,20 +254,26 @@ A URL de notificação usa `startDate`, `appointmentId` e `highlight=notificatio
 - Quando a navegação veio com `highlight=notification`, o card correspondente recebe borda e selo `Novo` por seis segundos.
 - Depois desse período, o destaque é removido sem alterar o agendamento.
 
-## Som e preferência local
+## Som e preferência persistida
 
-O som é uma preferência local do navegador, não uma configuração persistida no banco.
+O som é uma preferência por usuário e tenant persistida no banco. O servidor é
+a fonte de verdade; atualizações são serializadas e uma falha força reconsulta
+canônica antes de processar a próxima alteração.
 
 Chaves usadas:
 
 ```text
-agendai:sound-enabled
-agendai:sound-permission-dismissed
+agendai:sound-permission-dismissed:<tenantId>:<userId>
 ```
 
-Na primeira visita ao painel, o usuário pode ativar ou recusar alertas sonoros. A recusa não mostra o prompt novamente. A opção em Configurações do negócio atualiza a mesma preferência local.
+Na primeira visita ao painel, o usuário pode ativar ou recusar alertas sonoros.
+A chave local registra somente a dispensa do convite naquele navegador; não
+altera a preferência do servidor. A central e a página de configurações usam os
+mesmos controles e oferecem `Testar som` com feedback de autoplay.
 
-O som só é tentado para `public_booking_created` e `booking_confirmation_required` detectadas após a carga inicial. Falhas de autoplay ou de arquivo são ignoradas para não interromper o painel.
+O som só é tentado para `public_booking_created` e
+`booking_confirmation_required` detectadas após a carga inicial. Falhas de
+autoplay não interrompem o painel e são comunicadas ao usuário.
 
 ## Arquivo de áudio
 
@@ -227,12 +289,12 @@ Adicione um MP3 curto e suave nessa localização. Ele é servido pelo Next.js e
 
 1. Aplique migrations pendentes com `pnpm db:deploy`.
 2. Entre no painel de um prestador e confira o sino sem badge, ou com o total atual.
-3. Ative o som no prompt ou em Configurações do negócio.
+3. Ative ou teste o som no prompt, na área inline da central ou em Configurações.
 4. Em outra aba ou dispositivo, conclua um agendamento pelo link público.
 5. Volte ao painel ou aguarde até 30 segundos.
 6. Verifique toast, badge, título da aba e som, se habilitado.
 7. Abra o drawer e valide filtros, tempo relativo, leitura individual e `Ler todas`.
-8. Use `Ver agendamento` e confirme a navegação para a data correta com destaque temporário.
+8. Ative a linha do agendamento e confirme a navegação para a data correta com destaque temporário.
 9. Repita a atualização ou recarregue o fluxo e confirme que não surge uma notificação duplicada para o mesmo agendamento.
 10. Tente acessar os endpoints sem sessão ou com outro tenant e confirme que dados de outro tenant não são retornados.
 
@@ -240,7 +302,10 @@ Adicione um MP3 curto e suave nessa localização. Ele é servido pelo Next.js e
 
 ### Eventos implementados
 
-`payment_pending` é criado quando o prestador altera um agendamento para `FINISHED` sem haver lançamento financeiro `PAID` associado ao atendimento. A notificação é criada após a transação de status e não desfaz a finalização se falhar.
+`payment_pending` é criado quando o prestador altera um agendamento para
+`FINISHED` sem haver lançamento financeiro `PAID` associado ao atendimento. A
+notificação usa o mesmo `Prisma.TransactionClient`; uma falha desfaz toda a
+transação de finalização, evitando estado de domínio sem o evento durável.
 
 Ela usa o agendamento como entidade, prioridade `medium`, ação para `/app/financial` e os campos públicos de cliente, serviço, data e horário no metadata. A deduplicação existente impede mais de uma notificação desse tipo para o mesmo agendamento.
 
@@ -273,13 +338,20 @@ Endpoints:
 - `GET /api/provider/notifications/preferences`
 - `PATCH /api/provider/notifications/preferences`
 
-O PATCH aceita somente os seis campos booleanos conhecidos. O tenant e o usuário são inferidos da sessão. Quando não há registro, o GET retorna os defaults e informa `hasStoredPreferences: false` para permitir a migração segura da preferência local de som.
+O PATCH aceita somente os seis campos booleanos conhecidos. O tenant e o usuário
+são inferidos da sessão. Quando não há registro, o GET retorna os defaults e
+informa `hasStoredPreferences: false`. Esse sinal não autoriza migração ou
+promoção de valor vindo do navegador.
 
-O localStorage continua como fallback de migração para `soundEnabled`. Depois da primeira leitura, a preferência é persistida no servidor.
+O servidor é a fonte de verdade de `soundEnabled`. O `localStorage` guarda
+somente a dispensa local do convite de ativação e serve como transporte de
+fallback para sincronização entre abas; ele não concede nem altera a
+preferência do servidor.
 
 ### Central, filtros, toast e som
 
-O drawer possui as abas `Todas`, `Não lidas`, `Agendamentos`, `Financeiro` e `Sistema`.
+O drawer combina `Todas`/`Não lidas` com a categoria `Todas`, `Agendamentos`,
+`Financeiro` ou `Sistema` e envia ambos os filtros ao endpoint.
 
 - Agendamentos incluem os tipos de criação, confirmação, cancelamento e reagendamento.
 - Financeiro inclui `payment_pending` e `payment_received`.
@@ -290,7 +362,7 @@ As preferências controlam a apresentação no painel, não a existência da not
 ### Teste manual da Fase 2
 
 1. Execute `pnpm db:deploy` para aplicar a migration de preferências.
-2. Acesse Configurações do negócio e altere as opções de Notificações. Recarregue a página e confirme a persistência.
+2. Abra as preferências inline da central ou Configurações e altere as opções de Notificações. Recarregue a página e confirme a persistência.
 3. Coloque um agendamento em andamento e altere o status para `FINISHED` sem usar checkout ou registrar pagamento.
 4. Mantenha o painel aberto, aguarde o polling ou alterne o foco da aba.
 5. Confirme a notificação `Pagamento pendente`, o filtro Financeiro e a ação para o financeiro.
@@ -301,5 +373,5 @@ As preferências controlam a apresentação no painel, não a existência da not
 - Cancelamento e reagendamento públicos do cliente, com as notificações preparadas nesta fase.
 - `payment_received`, se houver uma regra de evento operacional para pagamento registrado.
 - WebSocket ou Server-Sent Events para entrega em tempo real.
-- Arquivamento, retenção e paginação visual de notificações.
+- Arquivamento e política de retenção de notificações.
 - Canais externos, como push, e-mail e WhatsApp.
