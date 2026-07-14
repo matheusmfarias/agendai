@@ -43,7 +43,11 @@ services:
     volumes:
       - evolution_instances_data:/evolution/instances
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/server/ok >/dev/null || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --header='apikey: $${AUTHENTICATION_API_KEY}' -qO- http://localhost:8080/instance/fetchInstances >/dev/null || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 30
