@@ -26,8 +26,10 @@ export function createWhatsAppQueue(connection = createQueueRedisConnection()) {
     defaultJobOptions: {
       attempts: 5,
       backoff: { type: "exponential", delay: 30_000 },
-      removeOnComplete: { age: 24 * 60 * 60, count: 5_000 },
-      removeOnFail: { age: 7 * 24 * 60 * 60, count: 10_000 },
+      // PostgreSQL is authoritative. A retained BullMQ job with the same
+      // deterministic id would block a later database-driven recovery.
+      removeOnComplete: true,
+      removeOnFail: true,
     },
   });
 }

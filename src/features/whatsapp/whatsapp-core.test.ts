@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { getWhatsAppConfig, WhatsAppConfigurationError } from "@/features/whatsapp/whatsapp-config";
 import { normalizeBrazilianWhatsAppPhone } from "@/features/whatsapp/whatsapp-phone";
-import { renderAppointmentConfirmedMessage } from "@/features/whatsapp/whatsapp-template";
+import {
+  renderAppointmentConfirmedMessage,
+  renderAppointmentRequestedMessage,
+} from "@/features/whatsapp/whatsapp-template";
+import { whatsappPreferenceSchema } from "@/features/whatsapp/whatsapp-schemas";
 
 describe("WhatsApp core", () => {
   afterEach(() => { delete process.env.WHATSAPP_GATEWAY_ENABLED; });
@@ -29,6 +33,29 @@ describe("WhatsApp core", () => {
     expect(text).toContain("Corte");
     expect(text).not.toContain("appointmentId");
     expect(text.length).toBeLessThanOrEqual(1_200);
+  });
+
+  it("renderiza a solicitação pendente sem expor o identificador", () => {
+    const text = renderAppointmentRequestedMessage({
+      businessName: "Agendaí Studio",
+      customerName: "Ana",
+      serviceName: "Corte",
+      professionalName: "Bia",
+      bookingDate: "14/07/2026",
+      bookingTime: "09:30",
+      appointmentId: crypto.randomUUID(),
+    });
+    expect(text).toContain("Recebemos sua solicitação de agendamento");
+    expect(text).toContain("Profissional: Bia");
+    expect(text).toContain("ainda precisa confirmar esse horário");
+    expect(text).not.toContain("appointmentId");
+    expect(text.length).toBeLessThanOrEqual(1_200);
+  });
+
+  it("aceita a preferência APPOINTMENT_REQUESTED na API", () => {
+    expect(
+      whatsappPreferenceSchema.parse({ sendAppointmentRequested: false }),
+    ).toEqual({ sendAppointmentRequested: false });
   });
 
   it("mantém a aplicação funcional com gateway desligado", () => {

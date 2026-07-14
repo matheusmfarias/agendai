@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { dispatchWhatsAppOutbox } from "@/workers/whatsapp-outbox-dispatcher";
 import { createWhatsAppQueue } from "@/workers/whatsapp-queue";

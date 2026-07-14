@@ -15,6 +15,7 @@ import {
 } from "@/features/booking-core/timezone";
 import { isTenantBookableForWhatsApp } from "@/features/booking-core/tenant-policy";
 import type { BookableTenant } from "@/features/booking-core/tenant-policy";
+import { enqueueAppointmentRequested } from "@/features/whatsapp/whatsapp-outbox-service";
 import { formatCurrency } from "@/lib/formatters";
 import { prisma } from "@/lib/prisma";
 
@@ -538,6 +539,19 @@ export async function createTypebotAppointment(
     await assertAvailability(tx, tenantId, startsAt, endsAt);
     await assertNoSlotConflict(tx, tenantId, startsAt, endsAt);
 
+    const tenant = await tx.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        name: true,
+        publicDisplayName: true,
+        timezone: true,
+      },
+    });
+    if (!tenant) {
+      throw new BusinessError("TENANT_NOT_FOUND", "Estabelecimento não encontrado.");
+    }
+
     const status = publicStatusForBookingMode(service.bookingMode);
 
     const created = await tx.appointment.create({
@@ -553,6 +567,19 @@ export async function createTypebotAppointment(
         estimatedPrice: service.priceValue,
       },
     });
+
+    if (status === "REQUESTED") {
+      await enqueueAppointmentRequested(tx, {
+        tenantId,
+        appointmentId: created.id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        serviceName: service.name,
+        startsAt,
+        timezone: tenant.timezone,
+        businessName: tenant.publicDisplayName ?? tenant.name,
+      });
+    }
 
     // Save custom field values
     if (customValues.rows.length) {

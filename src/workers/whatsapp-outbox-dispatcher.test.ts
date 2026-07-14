@@ -16,10 +16,42 @@ describe("WhatsApp dispatcher", () => {
     await expect(dispatchWhatsAppOutbox(queue)).resolves.toBe(1);
     expect(add).toHaveBeenCalledWith("send", { outboxId: id }, { jobId: id });
   });
+  it("busca e reenfileira RETRYING somente quando nextAttemptAt venceu", async () => {
+    const before = new Date();
+    await dispatchWhatsAppOutbox(queue);
+    const after = new Date();
+    expect(outbox.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: expect.arrayContaining([
+            { status: "PENDING" },
+            {
+              status: "RETRYING",
+              nextAttemptAt: {
+                lte: expect.any(Date),
+              },
+            },
+          ]),
+        },
+      }),
+    );
+    const retryCutoff = outbox.findMany.mock.calls[0]?.[0].where.OR[1].nextAttemptAt.lte as Date;
+    expect(retryCutoff.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(retryCutoff.getTime()).toBeLessThanOrEqual(after.getTime());
+    expect(add).toHaveBeenCalledWith("send", { outboxId: id }, { jobId: id });
+  });
   it("não enfileira se outro dispatcher ganhou o claim", async () => {
     outbox.updateMany.mockResolvedValue({ count: 0 });
     await expect(dispatchWhatsAppOutbox(queue)).resolves.toBe(0);
     expect(add).not.toHaveBeenCalled();
+  });
+  it("não duplica enqueue quando duas seleções disputam a mesma outbox", async () => {
+    outbox.findMany.mockResolvedValue([{ id }, { id }]);
+    outbox.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    await expect(dispatchWhatsAppOutbox(queue)).resolves.toBe(1);
+    expect(add).toHaveBeenCalledOnce();
   });
   it("devolve ao retry se Redis falhar", async () => {
     add.mockRejectedValue(new Error("redis down"));

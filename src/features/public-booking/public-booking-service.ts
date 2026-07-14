@@ -18,7 +18,10 @@ import { createProviderNotification } from "@/features/provider-notifications/no
 import type { CreateProviderNotificationInput } from "@/features/provider-notifications/notification-service";
 import { getSubscriptionPolicy } from "@/features/subscriptions/subscription-policy";
 import type { PublicBookingInput } from "@/features/public-booking/public-booking-schemas";
-import { enqueueAppointmentConfirmation } from "@/features/whatsapp/whatsapp-outbox-service";
+import {
+  enqueueAppointmentConfirmation,
+  enqueueAppointmentRequested,
+} from "@/features/whatsapp/whatsapp-outbox-service";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
@@ -418,6 +421,17 @@ export async function createPublicBooking(
           businessAddress:
             [tenant.address, tenant.city, tenant.state].filter(Boolean).join(", ") ||
             undefined,
+        });
+      } else if (status === "REQUESTED") {
+        await enqueueAppointmentRequested(tx, {
+          tenantId: tenant.id,
+          appointmentId: appointment.id,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          serviceName: service.name,
+          startsAt,
+          timezone: tenant.timezone,
+          businessName: tenant.publicDisplayName ?? tenant.name,
         });
       }
 

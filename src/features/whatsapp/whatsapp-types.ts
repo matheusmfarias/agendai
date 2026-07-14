@@ -17,12 +17,23 @@ export type AppointmentConfirmedPayload = {
   appointmentId: string;
 };
 
+export type AppointmentRequestedPayload = {
+  businessName: string;
+  customerName: string;
+  serviceName: string;
+  professionalName?: string;
+  bookingDate: string;
+  bookingTime: string;
+  appointmentId: string;
+};
+
 export type WhatsAppConnectionView = {
   id: string;
   status: WhatsAppConnectionState;
   phoneNumber: string | null;
   enabled: boolean;
   sendAppointmentConfirmation: boolean;
+  sendAppointmentRequested: boolean;
   connectedAt: string | null;
   lastHealthyAt: string | null;
   lastErrorCode: string | null;

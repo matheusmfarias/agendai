@@ -154,6 +154,7 @@ enum WhatsAppMessageStatus {
 
 enum WhatsAppMessageType {
   APPOINTMENT_CONFIRMED
+  APPOINTMENT_REQUESTED
 }
 
 model User {
@@ -627,6 +628,7 @@ model WhatsAppConnection {
   status                      WhatsAppConnectionStatus @default(DISCONNECTED)
   enabled                     Boolean                  @default(false)
   sendAppointmentConfirmation Boolean                  @default(false) @map("send_appointment_confirmation")
+  sendAppointmentRequested    Boolean                  @default(true) @map("send_appointment_requested")
   connectedAt                 DateTime?                @map("connected_at") @db.Timestamptz(3)
   disconnectedAt              DateTime?                @map("disconnected_at") @db.Timestamptz(3)
   lastHealthyAt               DateTime?                @map("last_healthy_at") @db.Timestamptz(3)

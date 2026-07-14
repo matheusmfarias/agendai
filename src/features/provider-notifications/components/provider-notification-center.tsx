@@ -20,7 +20,6 @@ import {
   LoaderCircle,
   Settings2,
   Volume2,
-  VolumeX,
   X,
 } from "lucide-react";
 

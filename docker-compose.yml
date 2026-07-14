@@ -12,7 +12,7 @@ services:
     volumes:
       - agenda_zap_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agendazap -d agendazap"]
+      test: ["CMD-SHELL", "pg_isready -U agendazap -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 10

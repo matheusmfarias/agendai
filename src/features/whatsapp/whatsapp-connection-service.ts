@@ -17,6 +17,7 @@ function toView(connection: {
   phoneNumber: string | null;
   enabled: boolean;
   sendAppointmentConfirmation: boolean;
+  sendAppointmentRequested: boolean;
   connectedAt: Date | null;
   lastHealthyAt: Date | null;
   lastErrorCode: string | null;
@@ -172,7 +173,11 @@ export async function getWhatsAppQrCode(
 
 export async function updateWhatsAppPreferences(
   actor: Actor,
-  values: { enabled?: boolean; sendAppointmentConfirmation?: boolean },
+  values: {
+    enabled?: boolean;
+    sendAppointmentConfirmation?: boolean;
+    sendAppointmentRequested?: boolean;
+  },
 ) {
   return prisma.$transaction(async (tx) => {
     const connection = await tx.whatsAppConnection.update({

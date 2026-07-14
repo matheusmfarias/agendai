@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, txMock, createProviderNotificationMock, enqueueConfirmationMock } = vi.hoisted(() => {
+const { prismaMock, txMock, createProviderNotificationMock, enqueueConfirmationMock, enqueueRequestedMock } = vi.hoisted(() => {
   const tx = {
     tenant: { findUnique: vi.fn() },
     service: { findFirst: vi.fn() },
@@ -23,6 +23,7 @@ const { prismaMock, txMock, createProviderNotificationMock, enqueueConfirmationM
     },
     createProviderNotificationMock: vi.fn(),
     enqueueConfirmationMock: vi.fn(),
+    enqueueRequestedMock: vi.fn(),
   };
 });
 
@@ -53,6 +54,7 @@ vi.mock("@/features/provider-notifications/notification-service", () => ({
 }));
 vi.mock("@/features/whatsapp/whatsapp-outbox-service", () => ({
   enqueueAppointmentConfirmation: enqueueConfirmationMock,
+  enqueueAppointmentRequested: enqueueRequestedMock,
 }));
 
 import {
@@ -138,6 +140,7 @@ describe("public booking ownership", () => {
         serviceName: "Consulta",
       }),
     );
+    expect(enqueueRequestedMock).not.toHaveBeenCalled();
   });
 
   it("persists a confirmation-required notification in the booking transaction", async () => {
@@ -171,6 +174,15 @@ describe("public booking ownership", () => {
         entityId: "appointment-a",
       }),
       txMock,
+    );
+    expect(enqueueConfirmationMock).not.toHaveBeenCalled();
+    expect(enqueueRequestedMock).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({
+        tenantId: "tenant-a-id",
+        appointmentId: "appointment-a",
+        serviceName: "Consulta",
+      }),
     );
   });
 

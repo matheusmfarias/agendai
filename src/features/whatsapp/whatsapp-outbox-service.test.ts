@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { connection, outbox } = vi.hoisted(() => ({
+const { connection, outbox, config } = vi.hoisted(() => ({
   connection: { findFirst: vi.fn() },
   outbox: { upsert: vi.fn() },
+  config: { enabled: true },
 }));
-vi.mock("@/features/whatsapp/whatsapp-config", () => ({ getWhatsAppConfig: () => ({ enabled: true }) }));
+vi.mock("@/features/whatsapp/whatsapp-config", () => ({ getWhatsAppConfig: () => config }));
 
-import { enqueueAppointmentConfirmation } from "@/features/whatsapp/whatsapp-outbox-service";
+import {
+  enqueueAppointmentConfirmation,
+  enqueueAppointmentRequested,
+} from "@/features/whatsapp/whatsapp-outbox-service";
 import type { Prisma } from "@/generated/prisma/client";
 
 const tenantId = crypto.randomUUID();
@@ -15,7 +19,7 @@ const tx = { whatsAppConnection: connection, whatsAppMessageOutbox: outbox } as 
 const input = { tenantId, appointmentId, customerName: "Ana", customerPhone: "11987654321", serviceName: "Corte", startsAt: new Date("2026-07-14T12:30:00Z"), timezone: "America/Sao_Paulo", businessName: "Studio" };
 
 describe("WhatsApp outbox", () => {
-  beforeEach(() => { vi.clearAllMocks(); connection.findFirst.mockResolvedValue({ id: crypto.randomUUID() }); outbox.upsert.mockResolvedValue({ id: crypto.randomUUID(), status: "PENDING" }); });
+  beforeEach(() => { vi.clearAllMocks(); config.enabled = true; connection.findFirst.mockResolvedValue({ id: crypto.randomUUID() }); outbox.upsert.mockResolvedValue({ id: crypto.randomUUID(), status: "PENDING" }); });
   it("filtra a conexão pelo tenant e cria outbox idempotente", async () => {
     await expect(enqueueAppointmentConfirmation(tx, input)).resolves.toMatchObject({ created: true });
     expect(connection.findFirst).toHaveBeenCalledWith({ where: { tenantId, enabled: true, sendAppointmentConfirmation: true }, select: { id: true } });
@@ -32,5 +36,63 @@ describe("WhatsApp outbox", () => {
   it("não cria com telefone inválido", async () => {
     await expect(enqueueAppointmentConfirmation(tx, { ...input, customerPhone: "11111111111" })).resolves.toEqual({ created: false, reason: "invalid_phone" });
     expect(connection.findFirst).not.toHaveBeenCalled();
+  });
+  it("cria APPOINTMENT_REQUESTED com preferência e idempotência próprias", async () => {
+    await expect(enqueueAppointmentRequested(tx, input)).resolves.toMatchObject({
+      created: true,
+    });
+    expect(connection.findFirst).toHaveBeenCalledWith({
+      where: {
+        tenantId,
+        enabled: true,
+        sendAppointmentRequested: true,
+      },
+      select: { id: true },
+    });
+    expect(outbox.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId_idempotencyKey: {
+            tenantId,
+            idempotencyKey: `appointment:${appointmentId}:requested:v1`,
+          },
+        },
+        create: expect.objectContaining({
+          type: "APPOINTMENT_REQUESTED",
+          tenantId,
+          appointmentId,
+          recipientPhone: "5511987654321",
+        }),
+      }),
+    );
+  });
+  it("não cria solicitação quando o gateway está desabilitado", async () => {
+    config.enabled = false;
+
+    await expect(enqueueAppointmentRequested(tx, input)).resolves.toEqual({
+      created: false,
+      reason: "gateway_disabled",
+    });
+    expect(connection.findFirst).not.toHaveBeenCalled();
+    expect(outbox.upsert).not.toHaveBeenCalled();
+  });
+  it("não cria solicitação sem conexão ou preferência", async () => {
+    connection.findFirst.mockResolvedValue(null);
+
+    await expect(enqueueAppointmentRequested(tx, input)).resolves.toEqual({
+      created: false,
+      reason: "preference_disabled",
+    });
+    expect(outbox.upsert).not.toHaveBeenCalled();
+  });
+  it("não cria solicitação com telefone inválido", async () => {
+    await expect(
+      enqueueAppointmentRequested(tx, {
+        ...input,
+        customerPhone: "11111111111",
+      }),
+    ).resolves.toEqual({ created: false, reason: "invalid_phone" });
+    expect(connection.findFirst).not.toHaveBeenCalled();
+    expect(outbox.upsert).not.toHaveBeenCalled();
   });
 });

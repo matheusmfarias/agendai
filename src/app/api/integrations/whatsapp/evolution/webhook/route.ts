@@ -8,7 +8,6 @@ import type { WhatsAppConnectionState } from "@/features/whatsapp/whatsapp-types
 import { prisma } from "@/lib/prisma";
 
 const MAX_BODY_BYTES = 64 * 1024;
-const ALLOWED_EVENTS = new Set(["QRCODE_UPDATED", "CONNECTION_UPDATE"]);
 
 function secretsMatch(received: string | null, expected: string) {
   if (!received) return false;
@@ -18,12 +17,28 @@ function secretsMatch(received: string | null, expected: string) {
 }
 
 function mapStatus(event: string, data: Record<string, unknown> | undefined): WhatsAppConnectionState {
-  if (event === "QRCODE_UPDATED") return "AWAITING_QR";
+  if (event === "qrcode.updated") return "AWAITING_QR";
   const raw = String(data?.state ?? data?.status ?? "").toLowerCase();
   if (raw === "open" || raw === "connected") return "CONNECTED";
   if (raw === "connecting") return "CONNECTING";
   if (["close", "closed", "disconnected"].includes(raw)) return "DISCONNECTED";
   return "DEGRADED";
+}
+
+function safeWebhookDiagnostic(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { bodyType: value === null ? "null" : typeof value };
+  }
+  const body = value as Record<string, unknown>;
+  const data = body.data;
+  return {
+    event: typeof body.event === "string" ? body.event.slice(0, 80) : undefined,
+    receivedFields: Object.keys(body).slice(0, 24),
+    dataFields:
+      data && typeof data === "object" && !Array.isArray(data)
+        ? Object.keys(data).slice(0, 24)
+        : [],
+  };
 }
 
 async function readLimitedBody(request: NextRequest) {
@@ -69,30 +84,63 @@ export async function POST(request: NextRequest) {
   if (text === null) {
     return NextResponse.json({ message: "Payload excede o limite." }, { status: 413 });
   }
-  const parsed = evolutionWebhookSchema.safeParse(
-    (() => {
-      try { return JSON.parse(text) as unknown; } catch { return null; }
-    })(),
-  );
-  if (!parsed.success || !ALLOWED_EVENTS.has(parsed.data.event)) {
+  let body: unknown;
+  try {
+    body = JSON.parse(text) as unknown;
+  } catch {
+    console.warn("Evolution webhook rejeitado", { reason: "invalid_json" });
     return NextResponse.json({ message: "Evento inválido." }, { status: 400 });
   }
-  const nestedInstance = typeof parsed.data.data?.instance === "string" ? parsed.data.data.instance : undefined;
-  const instanceName = parsed.data.instanceName ?? parsed.data.instance ?? nestedInstance;
-  if (!instanceName) return NextResponse.json({ message: "Evento inválido." }, { status: 400 });
+  const parsed = evolutionWebhookSchema.safeParse(body);
+  if (!parsed.success) {
+    console.warn("Evolution webhook rejeitado", {
+      reason: "invalid_schema",
+      ...safeWebhookDiagnostic(body),
+    });
+    return NextResponse.json({ message: "Evento inválido." }, { status: 400 });
+  }
+  const instanceName =
+    parsed.data.instanceName ??
+    parsed.data.instance ??
+    parsed.data.data?.instance;
+  if (!instanceName) {
+    console.warn("Evolution webhook rejeitado", {
+      reason: "missing_instance",
+      ...safeWebhookDiagnostic(body),
+    });
+    return NextResponse.json({ message: "Evento inválido." }, { status: 400 });
+  }
 
   const status = mapStatus(parsed.data.event, parsed.data.data);
   const now = new Date();
-  const updated = await prisma.whatsAppConnection.updateMany({
-    where: { instanceName },
-    data: {
-      status,
-      ...(status === "CONNECTED"
-        ? { connectedAt: now, lastHealthyAt: now, disconnectedAt: null, lastErrorCode: null }
-        : status === "DISCONNECTED"
-          ? { disconnectedAt: now, enabled: false }
-          : {}),
-    },
+  const matched = await prisma.$transaction(async (tx) => {
+    const connection = await tx.whatsAppConnection.findUnique({
+      where: { instanceName },
+      select: { id: true, tenantId: true },
+    });
+    if (!connection) return false;
+    await tx.whatsAppConnection.updateMany({
+      where: { id: connection.id, tenantId: connection.tenantId },
+      data: {
+        status,
+        ...(status === "CONNECTED"
+          ? { connectedAt: now, lastHealthyAt: now, disconnectedAt: null, lastErrorCode: null }
+          : status === "DISCONNECTED"
+            ? { disconnectedAt: now }
+            : {}),
+      },
+    });
+    if (status === "CONNECTED") {
+      await tx.whatsAppMessageOutbox.updateMany({
+        where: {
+          tenantId: connection.tenantId,
+          connectionId: connection.id,
+          status: "RETRYING",
+        },
+        data: { nextAttemptAt: now },
+      });
+    }
+    return true;
   });
-  return NextResponse.json({ accepted: true, matched: updated.count > 0 });
+  return NextResponse.json({ accepted: true, matched });
 }

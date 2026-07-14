@@ -22,7 +22,10 @@ import type {
   WhatsAppInstanceInfo,
   WhatsAppProvider,
 } from "@/features/whatsapp/contracts/whatsapp-provider";
-import { createWhatsAppConnection } from "@/features/whatsapp/whatsapp-connection-service";
+import {
+  createWhatsAppConnection,
+  updateWhatsAppPreferences,
+} from "@/features/whatsapp/whatsapp-connection-service";
 import { WhatsAppError } from "@/features/whatsapp/whatsapp-errors";
 
 function provider(): WhatsAppProvider {
@@ -44,7 +47,7 @@ describe("WhatsApp connection service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     connection.findUnique.mockResolvedValue(null);
-    connection.create.mockImplementation(async ({ data }) => ({ id: crypto.randomUUID(), phoneNumber: null, enabled: false, sendAppointmentConfirmation: false, connectedAt: null, lastHealthyAt: null, lastErrorCode: null, ...data }));
+    connection.create.mockImplementation(async ({ data }) => ({ id: crypto.randomUUID(), phoneNumber: null, enabled: false, sendAppointmentConfirmation: false, sendAppointmentRequested: true, connectedAt: null, lastHealthyAt: null, lastErrorCode: null, ...data }));
     audit.create.mockResolvedValue({});
   });
   it("cria nome estável e não usa slug ou tenantId puro", async () => {
@@ -56,7 +59,7 @@ describe("WhatsApp connection service", () => {
     expect(instanceName).not.toContain(actor.tenantId);
   });
   it("reutiliza registro local sem chamar provider", async () => {
-    connection.findUnique.mockResolvedValue({ id: crypto.randomUUID(), status: "CONNECTED", phoneNumber: "5511999999999", enabled: true, sendAppointmentConfirmation: true, connectedAt: null, lastHealthyAt: null, lastErrorCode: null });
+    connection.findUnique.mockResolvedValue({ id: crypto.randomUUID(), status: "CONNECTED", phoneNumber: "5511999999999", enabled: true, sendAppointmentConfirmation: true, sendAppointmentRequested: true, connectedAt: null, lastHealthyAt: null, lastErrorCode: null });
     const mockProvider = provider();
     await createWhatsAppConnection(actor, mockProvider);
     expect(mockProvider.createInstance).not.toHaveBeenCalled();
@@ -68,5 +71,25 @@ describe("WhatsApp connection service", () => {
     await createWhatsAppConnection(actor, mockProvider);
     expect(mockProvider.fetchInstanceInfo).toHaveBeenCalledOnce();
     expect(mockProvider.deleteInstance).not.toHaveBeenCalled();
+  });
+  it("atualiza a preferência de solicitação no tenant autenticado", async () => {
+    connection.update.mockResolvedValue({
+      id: crypto.randomUUID(),
+      status: "CONNECTED",
+      phoneNumber: null,
+      enabled: true,
+      sendAppointmentConfirmation: true,
+      sendAppointmentRequested: false,
+      connectedAt: null,
+      lastHealthyAt: null,
+      lastErrorCode: null,
+    });
+
+    await updateWhatsAppPreferences(actor, { sendAppointmentRequested: false });
+
+    expect(connection.update).toHaveBeenCalledWith({
+      where: { tenantId: actor.tenantId },
+      data: { sendAppointmentRequested: false },
+    });
   });
 });

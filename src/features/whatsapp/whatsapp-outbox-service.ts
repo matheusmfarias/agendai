@@ -1,7 +1,10 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { getWhatsAppConfig } from "@/features/whatsapp/whatsapp-config";
 import { normalizeBrazilianWhatsAppPhone } from "@/features/whatsapp/whatsapp-phone";
-import type { AppointmentConfirmedPayload } from "@/features/whatsapp/whatsapp-types";
+import type {
+  AppointmentConfirmedPayload,
+  AppointmentRequestedPayload,
+} from "@/features/whatsapp/whatsapp-types";
 
 export type AppointmentConfirmationOutboxInput = {
   tenantId: string;
@@ -15,6 +18,11 @@ export type AppointmentConfirmationOutboxInput = {
   businessName: string;
   businessAddress?: string;
 };
+
+export type AppointmentRequestedOutboxInput = Omit<
+  AppointmentConfirmationOutboxInput,
+  "businessAddress"
+>;
 
 function dateParts(value: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("pt-BR", {
@@ -65,6 +73,59 @@ export async function enqueueAppointmentConfirmation(
       appointmentId: input.appointmentId,
       connectionId: connection.id,
       type: "APPOINTMENT_CONFIRMED",
+      recipientPhone,
+      payload,
+      templateVersion: 1,
+      idempotencyKey,
+    },
+    update: {},
+    select: { id: true, status: true },
+  });
+  return { created: true, message } as const;
+}
+
+export async function enqueueAppointmentRequested(
+  tx: Prisma.TransactionClient,
+  input: AppointmentRequestedOutboxInput,
+) {
+  if (!getWhatsAppConfig().enabled) {
+    return { created: false, reason: "gateway_disabled" } as const;
+  }
+  const recipientPhone = input.customerPhone
+    ? normalizeBrazilianWhatsAppPhone(input.customerPhone)
+    : null;
+  if (!recipientPhone) {
+    return { created: false, reason: "invalid_phone" } as const;
+  }
+  const connection = await tx.whatsAppConnection.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      enabled: true,
+      sendAppointmentRequested: true,
+    },
+    select: { id: true },
+  });
+  if (!connection) {
+    return { created: false, reason: "preference_disabled" } as const;
+  }
+  const payload: AppointmentRequestedPayload = {
+    businessName: input.businessName,
+    customerName: input.customerName,
+    serviceName: input.serviceName,
+    professionalName: input.professionalName,
+    ...dateParts(input.startsAt, input.timezone),
+    appointmentId: input.appointmentId,
+  };
+  const idempotencyKey = `appointment:${input.appointmentId}:requested:v1`;
+  const message = await tx.whatsAppMessageOutbox.upsert({
+    where: {
+      tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey },
+    },
+    create: {
+      tenantId: input.tenantId,
+      appointmentId: input.appointmentId,
+      connectionId: connection.id,
+      type: "APPOINTMENT_REQUESTED",
       recipientPhone,
       payload,
       templateVersion: 1,

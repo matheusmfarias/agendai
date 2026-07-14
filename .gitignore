@@ -30,6 +30,7 @@ src/generated/prisma/
 .env.*
 .env.example
 !infra/whatsapp/.env.example
+/infra/whatsapp/.env
 
 # Local uploads and runtime storage
 storage/
