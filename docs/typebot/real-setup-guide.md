@@ -1,221 +1,331 @@
-# Typebot Real Setup Guide
+# Importar, configurar e publicar o Typebot do Agendaí
 
-Guia prático para montar o fluxo conversacional completo no Typebot usando a API
-do AgendaZap.
+Este é o procedimento canônico para colocar o fluxo conversacional do MVP em
+funcionamento.
 
-## Objetivo
+## Pré-requisitos no Agendaí
 
-Este guia transforma o [blueprint do fluxo](./flow-blueprint.md), o
-[simulador](./simulator.md) e a [documentação da API](../technical/typebot-api.md)
-em um roteiro passo a passo para configurar o Typebot real.
+- aplicação acessível pelo Typebot por HTTPS;
+- tenant ativo e com uso do canal permitido;
+- credencial Typebot ativa e exclusiva do tenant;
+- categoria, serviço e regras de disponibilidade ativos;
+- ao menos um serviço sem custom field obrigatório para validar o blueprint base;
+- Evolution API configurada separadamente caso se deseje receber as mensagens
+  transacionais reais.
 
-Ao final da configuração, o bot estará pronto para:
-- Receber o cliente via WhatsApp
-- Identificar/criar cliente no AgendaZap
-- Listar serviços ativos
-- Exibir detalhes e campos personalizados
-- Mostrar horários disponíveis
-- Criar agendamentos com `origin = WHATSAPP`
+O token é criado em
+`/admin/tenants/[tenantId]/typebot-credentials`, aparece uma única vez e possui
+prefixo `agz_tb_`. Não use `TYPEBOT_API_KEY` como credencial de produção; essa
+variável do Agendaí é apenas um fallback legado de desenvolvimento.
 
-## Pré-requisitos
+## 1. Importar o arquivo
 
-### No AgendaZap
+1. Acesse o workspace correto no Typebot.
+2. Escolha **Create a typebot**.
+3. Selecione **Import a file**.
+4. Importe [`agendai-mvp.typebot.json`](./agendai-mvp.typebot.json).
+5. Abra o bot importado e confirme que existem 24 grupos, iniciando por
+   **1. Identificar estabelecimento**.
+6. Não publique ainda.
 
-- [ ] Aplicação rodando (local ou publicada) com URL acessível pelo Typebot
-- [ ] Credencial Typebot gerada para o tenant (painel admin → detalhe do prestador → Credenciais Typebot)
-- [ ] Pelo menos um tenant ativo com:
-  - [ ] Plano com `whatsappEnabled = true`
-  - [ ] Assinatura `ACTIVE` ou `TRIAL`
-  - [ ] Categoria ativa com pelo menos um serviço ativo
-  - [ ] `availability_rules` configuradas (horários de atendimento)
-- [ ] Serviço com `bookingMode` definido (`DIRECT`, `REQUIRES_CONFIRMATION` ou `INFORMATIONAL`)
-- [ ] (Opcional) Campos personalizados configurados no serviço
+O Typebot documenta a importação de JSON pelo menu **Import a file**. Se uma
+instalação self-hosted antiga rejeitar o schema `6.1`, atualize o Typebot ou
+exporte/reimporte o fluxo pela versão instalada antes de configurar credenciais.
 
-### No Typebot
+## 2. Conferir as variáveis de sessão
 
-- [ ] Conta no [Typebot](https://typebot.io) (cloud ou self-hosted)
-- [ ] Bot criado com canal WhatsApp configurado
-- [ ] (Para testes locais) URL do AgendaZap acessível publicamente
+O blueprint de produção declara, mas não preenche:
 
-### Observação sobre localhost
+| Variável | Valor |
+|---|---|
+| `apiBaseUrl` | injetada pelo Agendaí a partir da URL pública configurada |
+| `tenantSlug` | injetada a partir da instância Evolution e do tenant persistido |
+| `typebotApiKey` | credencial ativa cifrada do mesmo tenant |
+| `phone` | telefone normalizado do remetente |
 
-Se o AgendaZap estiver rodando em `localhost`, o Typebot hospedado externamente
-**não conseguirá acessá-lo**. Para testes locais:
+Não adicione blocos **Set variable** para esses valores no fluxo publicado. Para
+Preview sem Evolution, use exclusivamente **Variables for test** e remova os
+valores de teste antes de publicar.
 
-- Use um túnel HTTPS para expor o servidor local temporariamente, **ou**
-- Publique o AgendaZap em um ambiente de homologação com URL pública
+Em seguida, abra o bloco **HTTP - Business** e use **Test the request**. O teste
+deve preencher `tenantName` e retornar status 200. Repita em **HTTP - Services**.
 
-Não é necessário indicar uma ferramenta específica — qualquer túnel HTTPS
-funciona, desde que a URL base seja acessível pelo Typebot.
+## 3. Conferir os blocos HTTP
 
----
+Todos usam o header:
 
-## Visão geral da montagem
-
-A configuração do Typebot segue esta sequência:
-
-1. **Variáveis** — criar todas as variáveis do bot
-2. **Bloco Start** — início do fluxo
-3. **Blocos HTTP** — 6 chamadas à API do AgendaZap
-4. **Blocos de mensagem** — textos exibidos ao cliente
-5. **Blocos de input** — captura de dados do cliente
-6. **Blocos de lógica** — mapeamento de número → ID, validações, condicionais
-7. **Tratamento de erros** — fallback para cada chamada HTTP
-
-Cada aspecto é detalhado nos documentos específicos:
-- [Variáveis e mapeamento](./real-variable-mapping.md)
-- [Passo a passo dos blocos](./real-flow-steps.md)
-- [Blocos HTTP](./real-http-blocks.md)
-- [Checklist de validação](./real-validation-checklist.md)
-- [Troubleshooting](./troubleshooting.md)
-
----
-
-## Configuração inicial
-
-### 1. Criar variáveis no Typebot
-
-Acesse a aba **Variables** do seu bot e crie as variáveis listadas em
-[real-variable-mapping.md](./real-variable-mapping.md).
-
-As três variáveis de configuração devem ser preenchidas no início do fluxo:
-
-| Variável | Valor | Observação |
-|---|---|---|
-| `apiBaseUrl` | URL base do AgendaZap | Ex: `https://agenda.seudominio.com`. Sem barra no final. |
-| `tenantSlug` | Slug do prestador | Fixo por bot. Ex: `mecanica-silva` |
-| `typebotApiKey` | Token da credencial do tenant | Gerado no painel admin. Prefixo `agz_tb_`. **Secreta** — nunca exibir em mensagem |
-
-As demais variáveis são preenchidas durante a conversa (pelo cliente ou pelas
-respostas da API).
-
-### 2. Configurar header de autenticação
-
-Toda chamada HTTP ao AgendaZap exige o header com o token da credencial do tenant:
-
-```
+```text
 x-typebot-api-key: {{typebotApiKey}}
 ```
 
-O valor de `{{typebotApiKey}}` deve ser o token gerado no painel administrativo
-(`/admin/tenants/[id]/typebot-credentials`). O token tem o prefixo `agz_tb_` e é
-exibido apenas uma vez — copie-o no momento da geração.
+Os POSTs também usam:
 
-Configure isso no bloco HTTP do Typebot, na seção de headers. Para requisições
-`POST`, adicione também:
-
-```
+```text
 Content-Type: application/json; charset=utf-8
 ```
 
----
+O token permanece no bloco HTTP executado pelo servidor do Typebot. Não marque
+esses blocos para execução no cliente.
 
-## Sequência geral de blocos
+## 4. Testar no preview
 
-A ordem recomendada dos blocos no Typebot (fluxo principal, caminho feliz):
+1. Inicie o preview.
+2. Confirme o nome do estabelecimento.
+3. Escolha um serviço retornado pela API.
+4. Escolha uma das três datas retornadas pelo Agendaí.
+5. Use **Ver mais datas** e confirme que o próximo período é carregado.
+6. Escolha uma data e depois um horário.
+7. Informe nome e telefone válidos.
+8. Revise o resumo.
+9. Confirme uma única vez.
+10. Verifique a mensagem final correspondente ao status.
+11. Volte ao editor e confirme que os logs HTTP não exibem falha.
 
+Antes de repetir um cenário, reinicie o preview para limpar as variáveis da
+conversa. Para testar idempotência, não reinicie: volte ao grupo de confirmação e
+confirme novamente. O fluxo deve seguir ao resultado usando o mesmo
+`appointmentId`.
+
+## 5. Publicar
+
+1. Confirme no Agendaí o `publicId` e uma credencial ativa recuperável do tenant.
+2. Confirme que o blueprint não contém blocos Set variable para a configuração.
+3. No Typebot, clique em **Publish**.
+4. Escolha o canal de teste desejado.
+5. Faça primeiro um teste web/preview.
+6. Só depois conecte ou atualize o canal WhatsApp que inicia o Typebot.
+
+Publicar o Typebot não configura Evolution API. O Typebot conduz a conversa; a
+outbox do Agendaí envia as mensagens transacionais pela Evolution separadamente.
+
+## Requests e responses de referência
+
+### Estabelecimento
+
+```http
+GET {{apiBaseUrl}}/api/typebot/{{tenantSlug}}/business
+x-typebot-api-key: {{typebotApiKey}}
 ```
-1. [Start]
-2. [Set variable] apiBaseUrl, tenantSlug, typebotApiKey
-3. [HTTP] GET /business
-4. [Message] Boas-vindas com {{tenantName}}
-5. [Message] Menu inicial (1-Agendar, 2-Serviços, 3-Atendimento)
-6. [Choice/Input] Cliente digita 1
-7. [Input] Capturar nome → {{customerName}}
-8. [Se WhatsApp não fornecer telefone] [Input] Capturar telefone → {{customerPhone}}
-9. [Input] Capturar e-mail (opcional) → {{customerEmail}}
-10. [HTTP] POST /customers/identify
-11. [HTTP] GET /services
-12. [Message] Exibir {{servicesText}}
-13. [Input] Cliente digita número do serviço
-14. [Logic] Mapear número → selectedServiceId, selectedServiceName
-15. [HTTP] GET /services/{{selectedServiceId}}
-16. [Message] Exibir resumo do serviço
-17. [Conditional] Se customFields não vazio → coletar campos
-18. [HTTP] GET /services/{{selectedServiceId}}/slots?days=7
-19. [Message] Exibir {{slotsText}}
-20. [Input] Cliente digita número do horário
-21. [Logic] Mapear número → selectedSlotStartsAt, selectedSlotLabel
-22. [Message] Resumo para confirmação
-23. [Input/Choice] Confirmar (1) ou Cancelar (2)
-24. [HTTP] POST /appointments
-25. [HTTP] GET /appointments/{{appointmentId}} (opcional, para dados completos)
-26. [Message] Mensagem final conforme {{appointmentStatus}}
-27. [End]
+
+```json
+{
+  "ok": true,
+  "tenant": {
+    "id": "tenant-uuid",
+    "name": "Nome do estabelecimento",
+    "slug": "slug-do-tenant",
+    "description": null,
+    "city": "Cidade",
+    "state": "UF",
+    "whatsapp": "5511999999999"
+  }
+}
 ```
 
-Detalhes de cada bloco e seus branches de erro em
-[real-flow-steps.md](./real-flow-steps.md).
+### Serviços
 
----
+```http
+GET {{apiBaseUrl}}/api/typebot/{{tenantSlug}}/services
+x-typebot-api-key: {{typebotApiKey}}
+```
 
-## Regras fundamentais
+```json
+{
+  "ok": true,
+  "services": [
+    {
+      "number": 1,
+      "id": "service-uuid",
+      "category": "Categoria",
+      "name": "Serviço",
+      "durationMinutes": 60,
+      "priceText": "R$ 100,00",
+      "bookingMode": "DIRECT"
+    }
+  ],
+  "text": "1 - Serviço | 60 min | R$ 100,00"
+}
+```
 
-Estas regras devem ser seguidas em toda a configuração:
+### Datas disponíveis
 
-1. **O Typebot NÃO calcula disponibilidade** — sempre chama a API de slots
-2. **O Typebot NÃO monta `startsAt` manualmente** — usa o valor exato retornado
-3. **O Typebot NÃO confia em texto livre para `serviceId`** — mapeia número → ID do array
-4. **O Typebot NÃO decide conflito** — a API valida e retorna `SLOT_UNAVAILABLE` se o horário foi ocupado
-5. **O Typebot NÃO expõe dados internos** — mensagens de erro são genéricas
-6. **Toda regra de negócio fica no AgendaZap** — o Typebot é apenas a interface conversacional
+Primeira página:
 
----
+```http
+GET {{apiBaseUrl}}/api/typebot/{{tenantSlug}}/services/{{selectedServiceId}}/available-dates?startDate=&days=14
+x-typebot-api-key: {{typebotApiKey}}
+```
 
-## Como testar
+```json
+{
+  "ok": true,
+  "dates": [
+    {
+      "date": "2026-07-16",
+      "label": "Qui, 16/07",
+      "slotCount": 2
+    }
+  ],
+  "nextStartDate": "2026-07-30"
+}
+```
 
-### Em ambiente local/dev
+O botão **Ver mais datas** repete a chamada usando diretamente
+`startDate={{nextStartDate}}`. O Typebot não converte a data nem copia o valor
+para uma variável intermediária. A opção escolhida é mapeada de
+`availableDateValues` diretamente para `selectedDate`.
 
-1. Suba o AgendaZap localmente com `pnpm dev`
-2. Exponha com túnel HTTPS (para o Typebot acessar)
-3. Atualize `apiBaseUrl` no Typebot com a URL do túnel
-4. Use o [simulador](./simulator.md) do AgendaZap para validar o fluxo antes de testar no Typebot
-5. Inicie uma conversa no canal de teste do Typebot
-6. Siga o fluxo completo e verifique as chamadas HTTP no painel do Typebot
+### Horários de uma data
 
-### Em ambiente publicado
+```http
+GET {{apiBaseUrl}}/api/typebot/{{tenantSlug}}/services/{{selectedServiceId}}/slots?date={{selectedDate}}&days=1
+x-typebot-api-key: {{typebotApiKey}}
+```
 
-1. Gere uma credencial Typebot para o tenant no painel administrativo
-2. Configure `apiBaseUrl` com a URL real do AgendaZap
-3. Configure `typebotApiKey` com o token da credencial (prefixo `agz_tb_`)
-4. Teste o fluxo completo via WhatsApp de teste
-5. Verifique os agendamentos criados no painel administrativo
+```json
+{
+  "ok": true,
+  "service": {
+    "id": "service-uuid",
+    "name": "Serviço",
+    "durationMinutes": 60
+  },
+  "slots": [
+    {
+      "number": 1,
+      "startsAt": "2026-07-20T12:00:00.000Z",
+      "endsAt": "2026-07-20T13:00:00.000Z",
+      "label": "20/07/2026 09:00"
+    }
+  ],
+  "text": "1 - 20/07/2026 09:00"
+}
+```
 
-### Validação pós-teste
+Quando não há horários, a API responde, por exemplo:
 
-Consulte o [checklist de validação](./real-validation-checklist.md) para
-confirmar todos os itens.
+```json
+{
+  "ok": false,
+  "code": "NO_SLOTS_AVAILABLE",
+  "message": "Nenhum horário disponível para este serviço nos próximos dias."
+}
+```
 
----
+O cliente vê apenas a mensagem segura definida no blueprint.
 
-## Limitações desta fase
+### Identificação
 
-- **WhatsApp Cloud API própria**: o AgendaZap **não** possui integração direta
-  com WhatsApp Cloud API. O WhatsApp é gerenciado exclusivamente pelo Typebot.
-- **Webhook**: o AgendaZap **não** recebe webhooks do WhatsApp ou do Typebot.
-- **Envio ativo de mensagens**: o AgendaZap **não** envia mensagens proativamente
-  (lembretes, confirmações, etc.).
-- **Configuração manual**: todo o fluxo deve ser montado manualmente no Typebot.
-  Não há export automático ou sincronização.
-- **Um bot por prestador**: cada tenant precisa de seu próprio bot no Typebot
-  com `tenantSlug` específico e seu próprio token de credencial (`agz_tb_`).
-- **Sem painel de bot no AgendaZap**: a configuração e monitoramento do bot são
-  feitos diretamente na plataforma Typebot.
-- **Tokens exibidos apenas uma vez**: ao gerar uma credencial no painel admin,
-  copie o token imediatamente. Ele não poderá ser recuperado depois.
-- **Rate limit**: os endpoints Typebot têm limites por minuto (120 leitura,
-  30 escrita, 20 auth). Evite loops sem delay no Typebot. Consulte
-  [troubleshooting.md](./troubleshooting.md) para o erro 429.
+```http
+POST {{apiBaseUrl}}/api/typebot/{{tenantSlug}}/customers/identify
+x-typebot-api-key: {{typebotApiKey}}
+Content-Type: application/json; charset=utf-8
 
----
+{
+  "phone": "{{customerPhone}}",
+  "name": "{{customerName}}"
+}
+```
 
-## Referências
+```json
+{
+  "ok": true,
+  "customer": {
+    "id": "customer-uuid",
+    "name": "Cliente",
+    "phone": "5511999999999",
+    "email": null
+  },
+  "session": {
+    "id": "session-uuid",
+    "status": "IDENTIFIED"
+  }
+}
+```
 
-- [Variáveis e mapeamento](./real-variable-mapping.md)
-- [Passo a passo dos blocos](./real-flow-steps.md)
-- [Blocos HTTP](./real-http-blocks.md)
-- [Checklist de validação](./real-validation-checklist.md)
-- [Troubleshooting](./troubleshooting.md)
-- [Blueprint do fluxo](./flow-blueprint.md)
-- [Simulador](./simulator.md)
-- [Documentação da API Typebot](../technical/typebot-api.md)
+### Criação
+
+```http
+POST {{apiBaseUrl}}/api/typebot/{{tenantSlug}}/appointments
+x-typebot-api-key: {{typebotApiKey}}
+Content-Type: application/json; charset=utf-8
+
+{
+  "sessionId": "{{sessionId}}",
+  "customerId": "{{customerId}}",
+  "serviceId": "{{selectedServiceId}}",
+  "startsAt": "{{selectedSlotStartsAt}}",
+  "customValues": []
+}
+```
+
+Resposta `DIRECT`:
+
+```json
+{
+  "ok": true,
+  "appointment": {
+    "id": "appointment-uuid",
+    "status": "CONFIRMED",
+    "origin": "WHATSAPP",
+    "startsAt": "2026-07-20T12:00:00.000Z",
+    "endsAt": "2026-07-20T13:00:00.000Z"
+  },
+  "message": "Agendamento confirmado com sucesso."
+}
+```
+
+Resposta `REQUIRES_CONFIRMATION`:
+
+```json
+{
+  "ok": true,
+  "appointment": {
+    "id": "appointment-uuid",
+    "status": "REQUESTED",
+    "origin": "WHATSAPP",
+    "startsAt": "2026-07-20T12:00:00.000Z",
+    "endsAt": "2026-07-20T13:00:00.000Z"
+  },
+  "message": "Sua solicitação foi enviada e aguarda confirmação do prestador."
+}
+```
+
+## Roteiro ponta a ponta
+
+Execute pelo menos estes cenários:
+
+1. `DIRECT`: criação única, status `CONFIRMED` e mensagem final correta.
+2. `REQUIRES_CONFIRMATION`: status `REQUESTED` e mensagem final correta.
+3. Período sem datas: usar **Ver mais datas** ou escolher outro serviço.
+4. Paginação: verificar que a primeira data da página seguinte não foi pulada.
+5. Data selecionada: conferir nos logs que `/slots` recebeu o mesmo
+   `YYYY-MM-DD` retornado por `/available-dates`.
+6. Serviço sem horários: voltar e escolher outro serviço.
+7. Confirmação repetida: mesmo `appointmentId` e apenas um Appointment/outbox.
+8. Horário ocupado entre lista e POST: mensagem amigável e atualização de slots.
+9. Nome ou telefone inválido: retornar à coleta sem mostrar erro técnico.
+10. Token de outro tenant: fluxo bloqueado sem revelar dados do tenant.
+11. Tenant ou assinatura indisponível: encerramento seguro.
+12. WhatsApp desabilitado: agendamento continua criado; apenas a mensagem
+    transacional não é enfileirada.
+
+Depois, confirme no Agendaí:
+
+- Appointment com tenant, customer, service, origem e status corretos;
+- evento e auditoria Typebot;
+- sessão com `lastAppointmentId`;
+- no máximo uma outbox solicitada para o evento;
+- nenhum envio transacional criado pelo próprio Typebot.
+
+## Limitações conhecidas
+
+- não há profissional na API/modelo atual;
+- o blueprint base não coleta custom fields obrigatórios;
+- o rate limit Typebot é em memória e não é distribuído entre réplicas;
+- cada tenant precisa de seu próprio bot ou cópia configurada com credencial
+  exclusiva;
+- Typebot Cloud não acessa `localhost`; use uma URL HTTPS alcançável;
+- cancelamento, reagendamento, pagamentos, IA e atendimento humano não fazem
+  parte deste fluxo;
+- `origin = WHATSAPP` é o valor persistido legado para o canal lógico Typebot.

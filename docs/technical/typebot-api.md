@@ -2,7 +2,84 @@
 
 API pública REST que permite ao Typebot orquestrar o fluxo conversacional de agendamento via WhatsApp.
 
-O Typebot atua apenas como **interface conversacional** — toda regra de negócio, validação, disponibilidade e conflito permanece no backend do AgendaZap.
+## Identificação segura do cliente
+
+`POST /api/typebot/:tenantSlug/customers/identify` opera em três fases:
+
+- `{"action":"LOOKUP","phone":"{{customerPhone}}"}` normaliza o telefone,
+  procura somente no tenant resolvido pelo slug e cria ou reutiliza a sessão;
+- `{"action":"CONFIRM","sessionId":"..."}` vincula à sessão apenas o único
+  cadastro apresentado pelo lookup;
+- `{"action":"CREATE","sessionId":"...","name":"...","rejectedExisting":true}`
+  cria um cadastro quando não houve correspondência ou o cliente respondeu
+  “Não sou eu”. Quando o lookup foi `FOUND`, a indicação explícita é obrigatória.
+
+O formato canônico é o número nacional brasileiro (`DDD + número`, 10 ou 11
+dígitos). Pontuação, espaços, `+` e o código `55` não alteram a comparação. Se
+mais de um Customer resultar no mesmo telefone, a API apresenta somente um
+candidato: primeiro o usado no agendamento criado mais recentemente; se nenhum
+tiver agendamento, o atualizado mais recentemente. A multiplicidade nunca é
+exposta. Após “Não sou eu”, o nome normalizado é comparado com todos os registros
+do telefone: match único é reutilizado, ausência cria um Customer e ambiguidade
+residual falha de forma segura, sem escolha arbitrária ou mesclagem.
+
+## Intenção, categorias e atendimento
+
+O blueprint começa com “Como podemos ajudar?”. A opção de agendamento consulta
+`GET /api/typebot/:tenantSlug/categories`, que retorna somente categorias ativas
+com pelo menos um serviço ativo. Em seguida,
+`GET /api/typebot/:tenantSlug/services?categoryId=UUID` retorna somente os
+serviços ativos daquela categoria e tenant.
+
+“Falar com atendente” é terminal: define `handoffRequested` e informa que o
+estabelecimento continuará no mesmo canal. Não cria agendamento. No canal Evolution,
+o gateway persiste a pausa somente para a conversa `tenant + WhatsApp + telefone`.
+Enquanto houver mensagens com intervalos menores que 30 minutos, elas não avançam
+o bot. Após 30 minutos sem atividade, a próxima mensagem inicia um novo `startChat`;
+24 horas permanecem apenas como teto absoluto. `menu` e `reiniciar` continuam como
+atalhos explícitos. “Encerrar atendimento” finaliza a sessão
+local, limpa as opções pendentes e permite que qualquer mensagem posterior inicie
+uma nova sessão. Sessões automáticas sem atividade por 30 minutos também são
+encerradas antes de um novo `startChat`.
+
+No canal WhatsApp, `customerPhone` deve receber a variável de sistema `{{phone}}`
+antes do grupo de identificação. O input de telefone permanece apenas como
+fallback do Preview web.
+
+## Turnos disponíveis
+
+`GET /api/typebot/:tenantSlug/services/:serviceId/available-periods?date=YYYY-MM-DD`
+retorna somente turnos que possuem slots reais:
+
+```json
+{
+  "ok": true,
+  "periods": [
+    { "value": "MORNING", "label": "Manhã", "slotCount": 6 },
+    { "value": "AFTERNOON", "label": "Tarde", "slotCount": 7 }
+  ]
+}
+```
+
+Os limites no timezone do tenant são: `MORNING` antes de 12:00,
+`AFTERNOON` entre 12:00 e 17:59 e `EVENING` a partir de 18:00. O endpoint de
+slots aceita `period=MORNING|AFTERNOON|EVENING`; a classificação sempre ocorre
+no backend sobre os mesmos slots do booking core.
+
+O Typebot atua apenas como **interface conversacional** — toda regra de negócio, validação, disponibilidade e conflito permanece no backend do Agendaí.
+
+A criação usa o mesmo núcleo de agendamento externo do link público
+(`booking-core/external-appointment-service`). Esse núcleo resolve o modo de
+confirmação, valida campos personalizados, aplica disponibilidade e conflitos,
+persiste o agendamento e solicita a outbox transacional do módulo WhatsApp. O
+Typebot não monta nem envia `APPOINTMENT_REQUESTED` ou
+`APPOINTMENT_CONFIRMED`.
+
+O canal lógico da chamada é `TYPEBOT`. Por compatibilidade com o enum e com os
+registros existentes, a origem persistida continua sendo `WHATSAPP`; eventos e
+auditoria registram `source = TYPEBOT`. Uma repetição do POST depois que a mesma
+sessão já gravou `lastAppointmentId` devolve o agendamento existente, sem criar
+outra outbox.
 
 ## Autenticação
 
@@ -57,6 +134,15 @@ funcionar para ele.
 
 **Não** utilize sessão de usuário navegador (`agenda-zap-session`) nestes endpoints. A autenticação é exclusivamente pelo header `x-typebot-api-key`.
 
+No canal Evolution, o Agendaí inicia o bot por chamada servidor a servidor e
+preenche `apiBaseUrl`, `tenantSlug`, `typebotApiKey` e `phone` em
+`prefilledVariables`. Novas credenciais mantêm o SHA-256 para validação e uma
+versão AES-256-GCM cifrada com `TYPEBOT_CREDENTIAL_ENCRYPTION_KEY` ou, na ausência
+dela, com uma chave separada derivada de `AUTH_SECRET`, para essa injeção.
+Credenciais anteriores sem versão cifrada continuam válidas nos endpoints,
+mas não podem iniciar o canal e devem ser rotacionadas. A continuação usa somente o
+`sessionId` do Typebot, que preserva as variáveis da sessão.
+
 ---
 
 ## Endpoints
@@ -102,7 +188,9 @@ GET /api/typebot/[tenantSlug]/business
 
 ### 2. Listar serviços
 
-Retorna serviços ativos em formato pronto para lista numerada.
+Retorna serviços ativos da categoria selecionada em formato pronto para lista
+numerada. O parâmetro `categoryId` é validado como UUID e combinado com o tenant
+resolvido pelo slug.
 
 ```http
 GET /api/typebot/[tenantSlug]/services
@@ -229,6 +317,17 @@ GET /api/typebot/[tenantSlug]/services/[serviceId]
 | `options` | `string[]` | Opções válidas para SELECT (vazio para outros tipos) |
 | `order` | `number` | Ordem de exibição (`position` no banco) |
 
+O endpoint dedicado usado pelo blueprint após a escolha do horário é:
+
+```http
+GET /api/typebot/[tenantSlug]/services/[serviceId]/custom-fields
+```
+
+Ele retorna `{ "ok": true, "fields": [...] }` com o mesmo contrato acima,
+somente para serviço ativo do tenant autenticado. `placeholder` é `null` porque
+o modelo atual não persiste placeholder por pergunta; o Typebot aplica um texto
+genérico de input sem inventar configuração de domínio.
+
 **`customFieldsText`:** texto pronto para o Typebot enviar ao cliente, listando os campos numerados com opções de SELECT e marcador `(obrigatório)`.
 
 **Erro (400):**
@@ -243,7 +342,41 @@ GET /api/typebot/[tenantSlug]/services/[serviceId]
 
 ---
 
-### 4. Horários disponíveis
+### 4. Próximas datas disponíveis
+
+Retorna somente datas que possuem ao menos um horário real disponível para o
+serviço dentro da janela consultada. Usa o mesmo cálculo do link público.
+
+```http
+GET /api/typebot/[tenantSlug]/services/[serviceId]/available-dates?startDate=2026-07-14&days=14
+```
+
+`startDate` é opcional e usa o dia atual no timezone do tenant quando ausente.
+`days` aceita de 1 a 14 e usa 14 por padrão. Cada resposta contém no máximo três
+datas. `nextStartDate` aponta para a continuação sem pular datas disponíveis e é
+`null` quando a janela máxima de agendamento terminou.
+
+```json
+{
+  "ok": true,
+  "dates": [
+    {
+      "date": "2026-07-16",
+      "label": "Qui, 16/07",
+      "slotCount": 2
+    }
+  ],
+  "nextStartDate": "2026-07-30"
+}
+```
+
+O Typebot deve enviar `date` sem conversão ao endpoint de slots. Uma resposta
+com `dates: []` não é erro; quando `nextStartDate` existir, o bot pode consultar
+o período seguinte.
+
+---
+
+### 5. Horários disponíveis
 
 Retorna slots disponíveis para um serviço.
 
@@ -292,7 +425,7 @@ GET /api/typebot/[tenantSlug]/services/[serviceId]/slots?date=2026-06-29&days=7
 
 ---
 
-### 5. Identificar cliente
+### 6. Identificar cliente
 
 Cria ou reutiliza um cliente a partir do telefone informado no WhatsApp. Também cria/atualiza a `typebot_session`.
 
@@ -336,9 +469,14 @@ Content-Type: application/json
 
 ---
 
-### 6. Criar agendamento
+### 7. Criar agendamento
 
 Cria um agendamento com origem `WHATSAPP`. Valida disponibilidade, bloqueios, conflitos e campos personalizados.
+
+No blueprint importável, o custom body do bloco HTTP é a variável completa
+`{{appointmentRequestBody}}`. Ela contém o JSON final já montado; não coloque
+`customValuesJson` entre aspas nem o injete como fragmento de outro body, pois
+isso transforma o array em texto escapado.
 
 ```http
 POST /api/typebot/[tenantSlug]/appointments
@@ -397,9 +535,13 @@ Content-Type: application/json
 }
 ```
 
+O POST é idempotente para a última criação da sessão quando tenant, cliente,
+serviço e horário coincidem. Uma repetição devolve o mesmo agendamento e não
+cria uma segunda outbox.
+
 ---
 
-### 7. Consultar agendamento
+### 8. Consultar agendamento
 
 Retorna dados do agendamento para confirmação ao cliente.
 
@@ -427,39 +569,32 @@ GET /api/typebot/[tenantSlug]/appointments/[appointmentId]
 
 ---
 
-## Exemplo de fluxo conversacional
+## Fluxo conversacional importável
 
-Fluxo típico no Typebot:
+O fluxo canônico está em
+[`docs/typebot/agendai-mvp.typebot.json`](../typebot/agendai-mvp.typebot.json).
+Ele identifica o tenant, carrega serviços, consulta apenas datas com horários
+por `/available-dates`, usa o `date` retornado em `/slots`, coleta nome e
+telefone, mostra o resumo e só então cria o agendamento.
 
-```
-1. Cliente envia "oi" no WhatsApp
-2. Typebot chama GET /api/typebot/[slug]/business
-   → "Olá! Bem-vindo à Mecânica Silva."
-3. Typebot pergunta qual serviço
-4. Typebot chama GET /api/typebot/[slug]/services
-   → exibe lista numerada
-5. Cliente digita "1"
-6. Typebot chama GET /api/typebot/[slug]/services/[id]
-   → obtém detalhes e campos personalizados
-7. Typebot chama GET /api/typebot/[slug]/services/[id]/slots
-   → exibe horários numerados
-8. Cliente digita "1"
-9. Typebot pergunta nome e telefone
-10. Typebot chama POST /api/typebot/[slug]/customers/identify
-    → identifica/cria cliente, obtém sessionId e customerId
-11. Se houver campos personalizados, Typebot pergunta cada campo
-12. Typebot chama POST /api/typebot/[slug]/appointments
-    → envia sessionId, customerId, serviceId, startsAt, customValues
-13. Typebot chama GET /api/typebot/[slug]/appointments/[id]
-    → confirma dados ao cliente
-14. "Agendamento confirmado! Troca de óleo em 29/06 às 14:00."
-```
+O resultado exibido é:
+
+- `CONFIRMED`: “Seu agendamento foi confirmado. Você também receberá os
+  detalhes pelo WhatsApp.”
+- `REQUESTED`: “Recebemos sua solicitação. O estabelecimento ainda precisa
+  confirmar o horário e você será avisado pelo WhatsApp.”
+
+O Typebot não envia essas mensagens transacionais; elas são respostas da
+conversa. `APPOINTMENT_REQUESTED`, `APPOINTMENT_CONFIRMED` e
+`APPOINTMENT_COMPLETED` continuam exclusivos da outbox/Evolution API.
 
 ---
 
 ## Listas numeradas
 
-Os endpoints `/services` e `/slots` retornam campo `number` começando em 1 e campo `text` com a lista formatada. O Typebot pode:
+Os endpoints `/services` e `/slots` retornam campo `number` começando em 1 e
+campo `text` com a lista formatada. `/available-dates` retorna até três datas e
+um cursor `nextStartDate`. O Typebot pode:
 
 1. Exibir `text` diretamente no WhatsApp
 2. Mapear a resposta numérica do cliente (`"1"`, `"2"`) para o item correspondente no array
@@ -497,7 +632,7 @@ Todos os endpoints Typebot possuem rate limit in-memory por janela de 1 minuto:
 
 | Grupo | Limite | Endpoints |
 |---|---|---|
-| Leitura | 120 req/min | `business`, `services`, `service-detail`, `slots`, `appointment-detail` |
+| Leitura | 120 req/min | `business`, `services`, `service-detail`, `available-dates`, `slots`, `appointment-detail` |
 | Escrita | 30 req/min | `identify`, `appointments` |
 | Auth falha | 20 req/min | Qualquer chamada sem token válido |
 
@@ -536,6 +671,8 @@ Status possíveis: **READY** (pronto), **WARNING** (atenção), **BLOCKED** (blo
 
 - Todas as consultas são isoladas pelo `tenantSlug` da URL
 - Agendamentos só podem ser consultados dentro do tenant proprietário
+- A consulta de detalhe aceita somente agendamentos com origem Typebot
+  persistida como `WHATSAPP`
 - Sessões Typebot só podem ser acessadas dentro do tenant proprietário
 - `createdByUserId` é sempre `null` — agendamentos Typebot não são atribuídos a usuários internos
 - Auditoria registra todos os eventos com `actorType = TYPEBOT`
@@ -555,18 +692,17 @@ Status possíveis: **READY** (pronto), **WARNING** (atenção), **BLOCKED** (blo
 
 ---
 
-## Limitações da fase atual
+## Limitações do fluxo Typebot MVP
 
-**Não implementado:**
-- Envio ativo de mensagens (WhatsApp Cloud API)
-- Webhook de recebimento do WhatsApp
-- OAuth / HMAC por payload
-- Cancelamento ou remarcação via WhatsApp
-- Pagamento
-- Lembretes automáticos
-- Templates de mensagem
-- Painel de configuração do bot
-- Expiração automática de credenciais
+- O domínio atual não possui `professionalId`; o estabelecimento define o
+  profissional quando aplicável.
+- O blueprint importável coleta os campos ativos em ordem e envia
+  `customValues` no contrato `{ customFieldId, value }` validado novamente pelo
+  booking core.
+- Cancelamento, reagendamento, pagamento, IA generativa e atendimento humano
+  não fazem parte deste fluxo.
+- Mensagens transacionais são enviadas pela Evolution API, fora do Typebot.
+- Não há expiração automática das credenciais Typebot.
 
 **Política de assinatura:** Agendamentos Typebot são bloqueados a partir de 8 dias de vencimento da assinatura. A partir de 15 dias, todos os endpoints Typebot retornam `BUSINESS_UNAVAILABLE`. Consulte [`subscription-enforcement.md`](./subscription-enforcement.md).
 

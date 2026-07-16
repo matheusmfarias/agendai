@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import Link from "next/link";
 import { ChevronRight, Clock } from "lucide-react";
 
@@ -24,6 +25,9 @@ interface ServiceCardProps {
   };
   tenantSlug: string;
   divided?: boolean;
+  disabled?: boolean;
+  pending?: boolean;
+  onSelect?: (serviceId: string) => void;
 }
 
 function priceLabel(service: ServiceCardProps["service"]) {
@@ -39,13 +43,37 @@ export function ServiceCard({
   service,
   tenantSlug,
   divided = false,
+  disabled = false,
+  pending = false,
+  onSelect,
 }: ServiceCardProps) {
   const price = priceLabel(service);
+
+  function handleClick(event: MouseEvent<HTMLAnchorElement>) {
+    if (disabled) {
+      event.preventDefault();
+      return;
+    }
+
+    const modifiedClick =
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey;
+    if (!modifiedClick && onSelect) {
+      event.preventDefault();
+      onSelect(service.id);
+    }
+  }
 
   return (
     <Link
       href={`/${tenantSlug}/book?serviceId=${service.id}`}
-      className={`group grid grid-cols-[1fr_auto] items-center gap-3 p-4 transition-colors hover:bg-muted/35 active:bg-muted/50 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 ${
+      onClick={handleClick}
+      aria-disabled={disabled}
+      aria-label={`${pending ? "Carregando" : "Agendar"} ${service.name}`}
+      className={`group grid w-full grid-cols-[1fr_auto] items-center gap-3 p-4 text-left transition-colors hover:bg-muted/35 active:bg-muted/50 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 aria-disabled:cursor-wait aria-disabled:opacity-70 ${
         divided ? "border-t border-border" : ""
       }`}
     >
@@ -77,7 +105,11 @@ export function ServiceCard({
       </div>
 
       <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:translate-x-0.5">
-        <ChevronRight className="size-4" aria-hidden="true" />
+        {pending ? (
+          <span className="size-3 animate-pulse rounded-full bg-primary-foreground" />
+        ) : (
+          <ChevronRight className="size-4" aria-hidden="true" />
+        )}
       </span>
     </Link>
   );

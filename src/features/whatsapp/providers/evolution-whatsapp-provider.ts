@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { toBrazilianE164Phone } from "@/features/booking-core/phone";
 import type {
   CreateWhatsAppInstanceInput,
   WhatsAppInstanceInfo,
@@ -17,9 +18,12 @@ const REQUEST_TIMEOUT_MS = 12_000;
 
 type ProviderEndpoint =
   | "instance.create"
+  | "instance.webhook"
   | "instance.connection-status"
   | "instance.qr-code"
   | "message.send-text"
+  | "message.send-buttons"
+  | "message.send-list"
   | "instance.disconnect"
   | "instance.delete";
 
@@ -51,6 +55,19 @@ const connectionResponseSchema = z
 const sendResponseSchema = z.object({
   key: z.object({ id: z.string().min(1) }),
 });
+type WebhookFindResponse = {
+  webhookBase64?: boolean;
+  webhook?: { webhookBase64: boolean };
+};
+const webhookFindResponseSchema: z.ZodType<WebhookFindResponse> = z
+  .object({
+    webhookBase64: z.boolean().optional(),
+    webhook: z.object({ webhookBase64: z.boolean() }).passthrough().optional(),
+  })
+  .passthrough()
+  .refine(
+    (value) => value.webhookBase64 !== undefined || value.webhook !== undefined,
+  );
 
 function mapConnectionState(value: string | undefined): WhatsAppConnectionState {
   switch (value?.toLowerCase()) {
@@ -75,6 +92,125 @@ function logProviderFailure(input: {
   httpStatus?: number;
 }) {
   console.warn("Evolution provider request failed", input);
+}
+
+function sanitizeDiagnosticText(value: unknown): string | string[] | undefined {
+  const sanitize = (text: string) =>
+    text
+      .replace(/https?:\/\/[^\s"']+/gi, "[url]")
+      .replace(/\b\d{8,}\b/g, "[number]")
+      .slice(0, 500);
+  if (typeof value === "string") return sanitize(value);
+  const collectMessages = (input: unknown, depth = 0): string[] => {
+    if (depth > 5) return [];
+    if (typeof input === "string") return [sanitize(input)];
+    if (Array.isArray(input)) {
+      return input.flatMap((item) => collectMessages(item, depth + 1)).slice(0, 10);
+    }
+    if (input && typeof input === "object") {
+      return Object.entries(input as Record<string, unknown>)
+        .filter(([key]) => key === "message")
+        .flatMap(([, item]) => collectMessages(item, depth + 1))
+        .slice(0, 10);
+    }
+    return [];
+  };
+  const messages = collectMessages(value);
+  if (messages.length === 1) return messages[0];
+  if (messages.length > 1) return messages;
+  return undefined;
+}
+
+function logWebhookBadRequest(body: unknown, requestBody: BodyInit | null | undefined) {
+  const response = body && typeof body === "object" && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : {};
+  const nested = response.response && typeof response.response === "object" && !Array.isArray(response.response)
+    ? response.response as Record<string, unknown>
+    : {};
+  let payloadFields: string[] = [];
+  if (typeof requestBody === "string") {
+    try {
+      const payload = JSON.parse(requestBody) as unknown;
+      if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+        payloadFields = Object.keys(payload).filter((field) => field !== "headers");
+      }
+    } catch {
+      // Não registre o corpo quando ele não puder ser interpretado com segurança.
+    }
+  }
+  console.warn("Evolution webhook configuration rejected", {
+    endpoint: "instance.webhook",
+    httpStatus: 400,
+    code: sanitizeDiagnosticText(response.code ?? nested.code ?? response.error),
+    message: sanitizeDiagnosticText(response.message ?? nested.message),
+    payloadFields,
+  });
+}
+
+function recipientFormat(value: unknown) {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return "NON_DIGIT";
+  if (value.startsWith("55") && (value.length === 12 || value.length === 13)) {
+    return `BRAZIL_E164_${value.length}_DIGITS`;
+  }
+  if (value.length === 10 || value.length === 11) {
+    return `BRAZIL_NATIONAL_${value.length}_DIGITS`;
+  }
+  return `DIGITS_${value.length}`;
+}
+
+function countInteractiveOptions(payload: Record<string, unknown>) {
+  let count = 0;
+  for (const field of ["buttons", "options"]) {
+    if (Array.isArray(payload[field])) count += payload[field].length;
+  }
+  if (Array.isArray(payload.sections)) {
+    for (const section of payload.sections) {
+      if (!section || typeof section !== "object" || Array.isArray(section)) continue;
+      const rows = (section as Record<string, unknown>).rows;
+      if (Array.isArray(rows)) count += rows.length;
+    }
+  }
+  return count;
+}
+
+function logSendMessageBadRequest(
+  endpoint: ProviderEndpoint,
+  body: unknown,
+  requestBody: BodyInit | null | undefined,
+) {
+  const response = body && typeof body === "object" && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : {};
+  const nested = response.response && typeof response.response === "object" && !Array.isArray(response.response)
+    ? response.response as Record<string, unknown>
+    : {};
+  let payload: Record<string, unknown> = {};
+  if (typeof requestBody === "string") {
+    try {
+      const parsed = JSON.parse(requestBody) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        payload = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // O diagnóstico não inclui o corpo quando ele não é JSON válido.
+    }
+  }
+  console.warn("Evolution conversational send rejected", {
+    endpoint,
+    httpStatus: 400,
+    code: sanitizeDiagnosticText(response.code ?? nested.code ?? response.error),
+    message: sanitizeDiagnosticText(response.message ?? nested.message),
+    payloadFields: Object.keys(payload).sort(),
+    textLength:
+      typeof payload.text === "string"
+        ? payload.text.length
+        : typeof payload.description === "string"
+          ? payload.description.length
+          : 0,
+    interactiveOptionsCount: countInteractiveOptions(payload),
+    recipientFormat: recipientFormat(payload.number),
+  });
 }
 
 function transportErrorDetails(error: unknown) {
@@ -279,6 +415,23 @@ function parseProviderResponse<T>(
   return parsed.data;
 }
 
+function transportRecipientPhone(value: string) {
+  const phone = toBrazilianE164Phone(value);
+  if (!phone) {
+    throw new WhatsAppError(
+      WHATSAPP_ERROR_CODES.INVALID_PHONE,
+      "Telefone brasileiro inválido.",
+      false,
+      400,
+    );
+  }
+  return phone;
+}
+
+function safeInteractiveText(value: string, maxLength: number) {
+  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
 export class EvolutionWhatsAppProvider implements WhatsAppProvider {
   private readonly baseUrl: URL;
   private readonly apiKey: string;
@@ -316,7 +469,25 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       throw normalizeTransportError(error, endpoint);
     }
     if (!response.ok) {
-      await response.body?.cancel().catch(() => undefined);
+      if (endpoint === "instance.webhook" && response.status === 400) {
+        let body: unknown = null;
+        try {
+          body = await readLimitedJson(response, endpoint);
+        } catch {
+          // O diagnóstico permanece restrito aos metadados seguros disponíveis.
+        }
+        logWebhookBadRequest(body, init?.body);
+      } else if (endpoint.startsWith("message.send-") && response.status === 400) {
+        let body: unknown = null;
+        try {
+          body = await readLimitedJson(response, endpoint);
+        } catch {
+          // O diagnóstico permanece restrito aos metadados seguros disponíveis.
+        }
+        logSendMessageBadRequest(endpoint, body, init?.body);
+      } else {
+        await response.body?.cancel().catch(() => undefined);
+      }
       throw providerError(response.status, endpoint);
     }
     return {
@@ -345,7 +516,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
             url: input.webhookUrl,
             webhookByEvents: false,
             base64: true,
-            events: ["QRCODE_UPDATED", "CONNECTION_UPDATE"],
+            events: ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"],
             headers: { "x-agendai-webhook-secret": input.webhookSecret },
           },
         }),
@@ -364,6 +535,55 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       status:
         response.instance.status === "open" ? "CONNECTED" : "AWAITING_QR",
     } satisfies WhatsAppInstanceInfo;
+  }
+
+  async configureWebhook(input: CreateWhatsAppInstanceInput) {
+    await this.request(
+      "instance.webhook",
+      `/webhook/set/${encodeURIComponent(input.instanceName)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          webhook: {
+            enabled: true,
+            url: input.webhookUrl,
+            webhookByEvents: false,
+            webhookBase64: false,
+            byEvents: false,
+            base64: false,
+            events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+            headers: { "x-agendai-webhook-secret": input.webhookSecret },
+          },
+        }),
+      },
+    );
+
+    const verification = await this.request(
+      "instance.webhook",
+      `/webhook/find/${encodeURIComponent(input.instanceName)}`,
+    );
+    const configuredPayload = parseProviderResponse(
+      webhookFindResponseSchema,
+      verification.body,
+      "instance.webhook",
+      verification.status,
+    );
+    const webhookBase64 = configuredPayload.webhook?.webhookBase64
+      ?? configuredPayload.webhookBase64;
+    if (webhookBase64 !== false) {
+      logProviderFailure({
+        endpoint: "instance.webhook",
+        failureType: "invalid_contract",
+        errorCode: WHATSAPP_ERROR_CODES.INVALID_PROVIDER_RESPONSE,
+        httpStatus: verification.status,
+      });
+      throw new WhatsAppError(
+        WHATSAPP_ERROR_CODES.INVALID_PROVIDER_RESPONSE,
+        "Evolution não aplicou a configuração JSON do webhook.",
+        false,
+        verification.status,
+      );
+    }
   }
 
   async getConnectionStatus(instanceName: string) {
@@ -398,7 +618,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       {
         method: "POST",
         body: JSON.stringify({
-          number: input.recipientPhone,
+          number: transportRecipientPhone(input.recipientPhone),
           text: input.text,
           delay: 1_000,
           linkPreview: false,
@@ -409,6 +629,77 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       sendResponseSchema,
       result.body,
       "message.send-text",
+      result.status,
+    );
+    return { externalMessageId: response.key.id };
+  }
+
+  async sendButtons(input: {
+    instanceName: string;
+    recipientPhone: string;
+    text: string;
+    options: Array<{ id: string; title: string }>;
+  }) {
+    const result = await this.request(
+      "message.send-buttons",
+      `/message/sendButtons/${encodeURIComponent(input.instanceName)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          number: transportRecipientPhone(input.recipientPhone),
+          title: "Agendaí",
+          description: safeInteractiveText(input.text, 1_024),
+          footer: "Agendaí",
+          buttons: input.options.slice(0, 3).map((option) => ({
+            type: "reply",
+            displayText: safeInteractiveText(option.title, 20),
+            id: safeInteractiveText(option.id, 200),
+          })),
+          delay: 1_000,
+        }),
+      },
+    );
+    const response = parseProviderResponse(
+      sendResponseSchema,
+      result.body,
+      "message.send-buttons",
+      result.status,
+    );
+    return { externalMessageId: response.key.id };
+  }
+
+  async sendList(input: {
+    instanceName: string;
+    recipientPhone: string;
+    text: string;
+    options: Array<{ id: string; title: string }>;
+  }) {
+    const result = await this.request(
+      "message.send-list",
+      `/message/sendList/${encodeURIComponent(input.instanceName)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          number: transportRecipientPhone(input.recipientPhone),
+          title: "Agendaí",
+          description: safeInteractiveText(input.text, 1_024),
+          footerText: "Agendaí",
+          buttonText: "Ver opções",
+          sections: [{
+            title: "Opções",
+            rows: input.options.map((option) => ({
+              title: safeInteractiveText(option.title, 24),
+              rowId: safeInteractiveText(option.id, 200),
+            })),
+          }],
+          delay: 1_000,
+        }),
+      },
+    );
+    const response = parseProviderResponse(
+      sendResponseSchema,
+      result.body,
+      "message.send-list",
       result.status,
     );
     return { externalMessageId: response.key.id };

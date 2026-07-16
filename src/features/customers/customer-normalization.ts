@@ -1,10 +1,10 @@
 import {
   formatBrazilianPhone,
-  normalizeBrazilianPhone,
 } from "@/lib/input-formatters";
+import { normalizeBrazilianCustomerPhone } from "@/features/booking-core/phone";
 
 export function normalizeCustomerPhone(value: string | null | undefined) {
-  return normalizeBrazilianPhone(value);
+  return normalizeBrazilianCustomerPhone(value) ?? "";
 }
 
 export function formatCustomerPhone(value: string | null | undefined) {

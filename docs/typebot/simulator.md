@@ -1,9 +1,26 @@
 # Typebot Flow Simulator
 
+O simulador reproduz intenção, categorias, serviços filtrados, datas, turnos e
+handoff. Há duas diferenças intencionais: quando não estiver previamente
+preenchido, o telefone é solicitado diretamente como fallback de Preview, e as ações rodam autenticadas
+como Super Admin. Após selecionar uma data, consulte e selecione o turno antes
+de carregar os horários; quando houver somente um, a etapa é pulada. Na
+identificação, use “Procurar cadastro”; confirme o
+nome encontrado ou escolha “Não sou eu” para informar um novo nome.
+
+Os retornos usam um único botão “Voltar”. Na tela de horários ele retorna ao
+turno somente quando essa escolha foi exibida; com turno único automático,
+retorna diretamente à data.
+
 ## Objetivo
 
 Ferramenta técnica para Super Admin simular o fluxo completo de agendamento
-Typebot sem depender do Typebot real, WhatsApp Cloud API ou canal externo.
+Typebot sem depender do Typebot real ou de um canal conversacional externo.
+
+O simulador valida regras e serviços internos, mas não valida o arquivo JSON,
+os blocos HTTP, a credencial `agz_tb_`, o rate limit nem a publicação no Typebot.
+Esses itens precisam do teste ponta a ponta descrito no
+[guia de importação](./real-setup-guide.md).
 
 ## Rota
 
@@ -25,16 +42,20 @@ O simulador conduz o operador pelas etapas do fluxo Typebot:
 
 1. **Selecionar tenant** — lista tenants com status, plano, assinatura e
    indicação de WhatsApp habilitado.
-2. **Identificar cliente** — informa telefone, nome e e-mail opcional; cria
-   ou reutiliza cliente e typebot_session.
-3. **Listar serviços** — exibe serviços ativos do tenant.
-4. **Detalhe do serviço** — exibe nome, categoria, duração, preço, modo e
+2. **Como podemos ajudar?** — escolhe agendamento ou handoff sem criação.
+3. **Categorias** — exibe somente categorias com serviços ativos.
+4. **Listar serviços** — filtra pela categoria escolhida.
+5. **Detalhe do serviço** — exibe nome, categoria, duração, preço, modo e
    campos personalizados ativos.
-5. **Horários disponíveis** — busca slots para o serviço nos próximos 7 dias.
-6. **Campos personalizados** — renderiza inputs conforme o tipo de cada campo
+6. **Datas disponíveis** — mostra até três datas calculadas pela disponibilidade
+   real e permite avançar pelo próximo período.
+7. **Turnos e horários** — pula turno único ou pede a escolha antes dos slots.
+8. **Campos personalizados** — consulta após o horário e renderiza inputs conforme o tipo de cada campo
    (TEXT, TEXTAREA, NUMBER, DATE, BOOLEAN, SELECT).
-7. **Confirmar** — exibe resumo do agendamento e campo de observações.
-8. **Resultado** — exibe ID, status, origin, horário e mensagem de
+9. **Identificar cliente** — procura pelo telefone, confirma o candidato e só
+   solicita nome quando necessário.
+10. **Confirmar** — exibe resumo do agendamento e campo de observações.
+11. **Resultado** — exibe ID, status, origin, horário e mensagem de
    confirmação.
 
 O painel de log exibe cada requisição/resposta com timestamp para debug.
@@ -87,11 +108,14 @@ erros brutos de banco.
 
 ## Limitações
 
-- Não envia mensagens (sem WhatsApp Cloud API).
+- Como usa o mesmo serviço compartilhado, a criação pode gerar outbox
+  transacional. Para testes sem envio real, use um tenant com WhatsApp
+  desabilitado ou preferência desligada.
 - Não substitui o Typebot real.
 - Não faz webhook ou disparo ativo.
 - Apenas SUPER_ADMIN pode usar.
-- Agendamentos criados via simulador não notificam prestador ou cliente.
+- O simulador não representa o prompt conversacional importado e não testa a
+  diferença entre execução HTTP no Typebot Cloud e self-hosted.
 - Não valida credenciais Typebot (`agz_tb_`) — usa sessão de Super Admin.
   Para testar autenticação com tokens, use os endpoints da API diretamente
   via curl ou ferramenta HTTP.

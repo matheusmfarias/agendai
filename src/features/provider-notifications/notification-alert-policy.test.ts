@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { providerNotificationAlertDecision } from "@/features/provider-notifications/notification-alert-policy";
+import {
+  providerNotificationAlertDecision,
+  providerNotificationDeliveryDecision,
+} from "@/features/provider-notifications/notification-alert-policy";
 import { DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES } from "@/features/provider-notifications/types";
 import type { ProviderNotification } from "@/features/provider-notifications/types";
 
@@ -32,7 +35,7 @@ describe("provider notification alert policy", () => {
         { ...DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES, soundEnabled: true },
         true,
       ),
-    ).toEqual({ toast: false, sound: false });
+    ).toEqual({ alert: false, sound: false });
   });
 
   it("allows booking toast and sound according to preferences", () => {
@@ -42,7 +45,7 @@ describe("provider notification alert policy", () => {
         { ...DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES, soundEnabled: true },
         false,
       ),
-    ).toEqual({ toast: true, sound: true });
+    ).toEqual({ alert: true, sound: true });
   });
 
   it("shows payment pending without sound", () => {
@@ -52,6 +55,29 @@ describe("provider notification alert policy", () => {
         { ...DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES, soundEnabled: true },
         false,
       ),
-    ).toEqual({ toast: true, sound: false });
+    ).toEqual({ alert: true, sound: false });
+  });
+
+  it("uses toast in a visible tab and not a native notification", () => {
+    expect(
+      providerNotificationDeliveryDecision({
+        notification: notification("public_booking_created"),
+        preferences: DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
+        initialLoad: false,
+        visibility: "visible",
+      }),
+    ).toEqual({ alert: true, toast: true, native: false, sound: false });
+  });
+
+  it("keeps a hidden alert eligible for native delivery independently of permission", () => {
+    const item = notification("booking_confirmation_required");
+    expect(
+      providerNotificationDeliveryDecision({
+        notification: item,
+        preferences: DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
+        initialLoad: false,
+        visibility: "hidden",
+      }),
+    ).toEqual({ alert: true, toast: false, native: true, sound: false });
   });
 });

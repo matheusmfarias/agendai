@@ -42,36 +42,6 @@ type AgendaViewMode = "day" | "week" | "month" | "agenda";
 
 const AGENDA_VIEW_MODE_COOKIE_NAME = "agendazap_provider_agenda_view_mode";
 
-type AppointmentStatusValue =
-  | "REQUESTED"
-  | "CONFIRMED"
-  | "WAITING_INFO"
-  | "RESCHEDULED"
-  | "CANCELED_BY_CUSTOMER"
-  | "CANCELED_BY_PROVIDER"
-  | "NO_SHOW"
-  | "IN_PROGRESS"
-  | "FINISHED";
-
-function effectiveStatus(
-  status: AppointmentStatusValue,
-  endsAt: Date,
-): AppointmentStatusValue {
-  if (
-    endsAt < new Date() &&
-    ![
-      "CANCELED_BY_CUSTOMER",
-      "CANCELED_BY_PROVIDER",
-      "NO_SHOW",
-      "FINISHED",
-    ].includes(status)
-  ) {
-    return "FINISHED";
-  }
-
-  return status;
-}
-
 function parseViewMode(value: string | undefined): AgendaViewMode {
   return value === "week" ||
     value === "month" ||
@@ -249,7 +219,7 @@ export default async function AppointmentsPage({
         id: appointment.id,
         startsAt: appointment.startsAt.toISOString(),
         endsAt: appointment.endsAt.toISOString(),
-        status: effectiveStatus(appointment.status, appointment.endsAt),
+        status: appointment.status,
         origin: appointment.origin,
         estimatedPrice: appointment.estimatedPrice?.toString() ?? null,
         finalPrice: appointment.finalPrice?.toString() ?? null,
@@ -311,10 +281,7 @@ export default async function AppointmentsPage({
               id: selectedAppointment.id,
               startsAt: selectedAppointment.startsAt.toISOString(),
               endsAt: selectedAppointment.endsAt.toISOString(),
-              status: effectiveStatus(
-                selectedAppointment.status,
-                selectedAppointment.endsAt,
-              ),
+              status: selectedAppointment.status,
               origin: selectedAppointment.origin,
               estimatedPrice:
                 selectedAppointment.estimatedPrice?.toString() ?? null,

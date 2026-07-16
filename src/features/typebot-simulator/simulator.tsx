@@ -15,25 +15,36 @@ import { Alert } from "@/components/ui/alert";
 
 import {
   createSimulatorAppointment,
+  fetchCustomFields,
+  fetchAvailableDates,
+  fetchAvailablePeriods,
   fetchBusiness,
+  fetchCategories,
   fetchServiceDetail,
   fetchServices,
   fetchSlots,
-  identifySimulatorCustomer,
+  lookupSimulatorCustomer,
   loadTenants,
+  resolveSimulatorCustomer,
   type TenantOption,
 } from "@/features/typebot-simulator/simulator-actions";
 import { formatBrazilianPhone } from "@/lib/input-formatters";
-import type {
-  SimulatorState,
-  StepLog,
+import {
+  buildSimulatorCustomValues,
+  type SimulatorState,
+  type StepLog,
 } from "@/features/typebot-simulator/simulator-types";
 
 const STEP_LABELS: Record<SimulatorState["step"], string> = {
   tenant: "Prestador",
+  intent: "Ajuda",
+  categories: "Categorias",
+  handoff: "Atendente",
   customer: "Cliente",
   services: "Serviços",
   "service-detail": "Detalhe",
+  dates: "Datas",
+  periods: "Turnos",
   slots: "Horários",
   "custom-fields": "Campos",
   confirm: "Confirmar",
@@ -42,10 +53,14 @@ const STEP_LABELS: Record<SimulatorState["step"], string> = {
 
 const ALL_STEPS: SimulatorState["step"][] = [
   "tenant",
-  "customer",
+  "intent",
+  "categories",
   "services",
   "service-detail",
+  "dates",
+  "periods",
   "slots",
+  "customer",
   "custom-fields",
   "confirm",
   "result",
@@ -54,12 +69,16 @@ const ALL_STEPS: SimulatorState["step"][] = [
 function statusMessage(status: string): string {
   switch (status) {
     case "CONFIRMED":
-      return "Agendamento confirmado com sucesso.";
+      return "Agendamento confirmado! ✅";
     case "REQUESTED":
-      return "Solicitação recebida. Aguardando confirmação do prestador.";
+      return "Solicitação enviada! ✅\n\nO estabelecimento ainda precisa confirmar o horário. Avisaremos você por aqui assim que houver uma resposta.";
     default:
       return "Agendamento registrado.";
   }
+}
+
+function formatSlotTimeLabel(label: string) {
+  return label.match(/\d{2}:\d{2}$/)?.[0] ?? label;
 }
 
 export function TypebotSimulator() {
@@ -75,16 +94,27 @@ export function TypebotSimulator() {
     tenantAvailable: false,
     tenantUnavailableReason: "",
     business: null,
+    categories: [],
+    selectedCategoryId: "",
+    selectedCategoryName: "",
     customerPhone: "",
     customerName: "",
     customerEmail: "",
     customerId: "",
     sessionId: "",
+    customerLookupStatus: "",
+    matchedCustomerName: "",
     services: [],
     selectedServiceId: "",
     selectedServiceName: "",
     serviceDetail: null,
     customFields: [],
+    customFieldIndex: 0,
+    availableDates: [],
+    selectedDate: "",
+    nextStartDate: "",
+    periods: [],
+    selectedPeriod: "",
     slots: [],
     selectedSlotStartsAt: "",
     selectedSlotLabel: "",
@@ -156,7 +186,7 @@ export function TypebotSimulator() {
         tenantName: result.business.name,
         tenantAvailable: true,
         business: result.business,
-        step: "customer",
+        step: "intent",
       });
     } else {
       setPartial({
@@ -170,26 +200,92 @@ export function TypebotSimulator() {
     setBusy(false);
   };
 
-  const handleIdentify = async () => {
+  const handleChooseBooking = async () => {
     setBusy(true);
-    const result = await identifySimulatorCustomer(
+    const result = await fetchCategories(state.tenantSlug);
+    addLog(result.log);
+    if (result.ok && result.categories) {
+      setPartial({ categories: result.categories, step: "categories" });
+    } else {
+      setError(
+        result.error ?? {
+          code: "UNKNOWN",
+          message: "Não foi possível carregar as opções. Tente novamente.",
+        },
+      );
+    }
+    setBusy(false);
+  };
+
+  const handleSelectCategory = (categoryId: string, categoryName: string) => {
+    setPartial({
+      selectedCategoryId: categoryId,
+      selectedCategoryName: categoryName,
+      services: [],
+      selectedServiceId: "",
+      selectedServiceName: "",
+      serviceDetail: null,
+      availableDates: [],
+      selectedDate: "",
+      periods: [],
+      selectedPeriod: "",
+      slots: [],
+      selectedSlotStartsAt: "",
+      appointmentId: "",
+    });
+  };
+
+  const handleLookupCustomer = async () => {
+    setBusy(true);
+    const result = await lookupSimulatorCustomer(
       state.tenantSlug,
       state.customerPhone,
-      state.customerName,
-      state.customerEmail || undefined,
     );
     addLog(result.log);
-    if (result.ok && result.customer && result.session) {
+    if (result.ok && result.lookup && result.session) {
       setPartial({
-        customerId: result.customer.id,
         sessionId: result.session.id,
-        step: "services",
+        customerLookupStatus: result.lookup.status,
+        matchedCustomerName: result.lookup.customerName ?? "",
       });
     } else {
       setError(
         result.error ?? {
           code: "UNKNOWN",
-          message: "Erro ao identificar cliente.",
+          message: "Não foi possível confirmar seus dados. Tente novamente.",
+        },
+      );
+    }
+    setBusy(false);
+  };
+
+  const handleResolveCustomer = async (action: "CONFIRM" | "CREATE") => {
+    setBusy(true);
+    const result = await resolveSimulatorCustomer(
+      state.tenantSlug,
+      action === "CONFIRM"
+        ? { action, sessionId: state.sessionId }
+        : {
+            action,
+            sessionId: state.sessionId,
+            name: state.customerName,
+            email: state.customerEmail || undefined,
+            rejectedExisting: state.matchedCustomerName !== "",
+          },
+    );
+    addLog(result.log);
+    if (result.ok && result.customer && result.session) {
+      setPartial({
+        customerId: result.customer.id,
+        customerName: result.customer.name,
+        sessionId: result.session.id,
+        step: "confirm",
+      });
+    } else {
+      setError(
+        result.error ?? {
+          code: "UNKNOWN",
+          message: "Não foi possível confirmar seus dados. Tente novamente.",
         },
       );
     }
@@ -198,15 +294,18 @@ export function TypebotSimulator() {
 
   const handleFetchServices = async () => {
     setBusy(true);
-    const result = await fetchServices(state.tenantSlug);
+    const result = await fetchServices(
+      state.tenantSlug,
+      state.selectedCategoryId,
+    );
     addLog(result.log);
     if (result.ok && result.services) {
-      setPartial({ services: result.services, error: null });
+      setPartial({ services: result.services, step: "services", error: null });
     } else {
       setError(
         result.error ?? {
           code: "UNKNOWN",
-          message: "Erro ao listar serviços.",
+          message: "Não foi possível carregar os serviços. Tente novamente.",
         },
       );
     }
@@ -217,6 +316,18 @@ export function TypebotSimulator() {
     setPartial({
       selectedServiceId: serviceId,
       selectedServiceName: serviceName,
+      availableDates: [],
+      selectedDate: "",
+      nextStartDate: "",
+      periods: [],
+      selectedPeriod: "",
+      slots: [],
+      selectedSlotStartsAt: "",
+      selectedSlotLabel: "",
+      customFields: [],
+      customFieldIndex: 0,
+      customFieldValues: {},
+      appointmentId: "",
     });
   };
 
@@ -238,7 +349,99 @@ export function TypebotSimulator() {
       setError(
         result.error ?? {
           code: "UNKNOWN",
-          message: "Erro ao buscar detalhes.",
+          message: "Não foi possível carregar o serviço. Tente novamente.",
+        },
+      );
+    }
+    setBusy(false);
+  };
+
+  const handleFetchAvailableDates = async (startDate?: string) => {
+    setBusy(true);
+    const result = await fetchAvailableDates(
+      state.tenantSlug,
+      state.selectedServiceId,
+      startDate,
+    );
+    addLog(result.log);
+    if (result.ok && result.dates) {
+      setPartial({
+        availableDates: result.dates,
+        selectedDate: "",
+        nextStartDate: result.nextStartDate ?? "",
+        step: "dates",
+        error: null,
+      });
+    } else {
+      setError(
+        result.error ?? {
+          code: "UNKNOWN",
+          message: "Não foi possível carregar as datas. Tente novamente.",
+        },
+      );
+    }
+    setBusy(false);
+  };
+
+  const handleSelectDate = (date: string) => {
+    setPartial({
+      selectedDate: date,
+      periods: [],
+      selectedPeriod: "",
+      slots: [],
+      selectedSlotStartsAt: "",
+      selectedSlotLabel: "",
+    });
+  };
+
+  const handleFetchPeriods = async () => {
+    setBusy(true);
+    const result = await fetchAvailablePeriods(
+      state.tenantSlug,
+      state.selectedServiceId,
+      state.selectedDate,
+    );
+    addLog(result.log);
+    if (result.ok && result.periods) {
+      const onlyPeriod = result.periods.length === 1
+        ? result.periods[0].value
+        : null;
+      if (onlyPeriod) {
+        const slotsResult = await fetchSlots(
+          state.tenantSlug,
+          state.selectedServiceId,
+          state.selectedDate,
+          onlyPeriod,
+        );
+        addLog(slotsResult.log);
+        if (slotsResult.ok && slotsResult.slots) {
+          setPartial({
+            periods: result.periods,
+            selectedPeriod: onlyPeriod,
+            slots: slotsResult.slots,
+            step: "slots",
+          });
+        } else {
+          setError(
+            slotsResult.error ?? {
+              code: "UNKNOWN",
+              message: "Não foi possível carregar os horários. Tente novamente.",
+            },
+          );
+        }
+        setBusy(false);
+        return;
+      }
+      setPartial({
+        periods: result.periods,
+        selectedPeriod: "",
+        step: "periods",
+      });
+    } else {
+      setError(
+        result.error ?? {
+          code: "UNKNOWN",
+          message: "Não foi possível carregar os turnos. Tente novamente.",
         },
       );
     }
@@ -246,10 +449,13 @@ export function TypebotSimulator() {
   };
 
   const handleFetchSlots = async () => {
+    if (!state.selectedPeriod) return;
     setBusy(true);
     const result = await fetchSlots(
       state.tenantSlug,
       state.selectedServiceId,
+      state.selectedDate,
+      state.selectedPeriod,
     );
     addLog(result.log);
     if (result.ok && result.slots) {
@@ -258,7 +464,7 @@ export function TypebotSimulator() {
       setError(
         result.error ?? {
           code: "UNKNOWN",
-          message: "Erro ao buscar horários.",
+          message: "Não foi possível carregar os horários. Tente novamente.",
         },
       );
     }
@@ -269,27 +475,70 @@ export function TypebotSimulator() {
     setPartial({ selectedSlotStartsAt: startsAt, selectedSlotLabel: label });
   };
 
-  const handleGoToCustomFields = () => {
-    if (state.customFields.length) {
-      setPartial({ step: "custom-fields" });
-    } else {
-      setPartial({ step: "confirm" });
+  const handleGoToCustomer = async () => {
+    setBusy(true);
+    const result = await fetchCustomFields(
+      state.tenantSlug,
+      state.selectedServiceId,
+    );
+    addLog(result.log);
+    if (!result.ok || !result.fields) {
+      setError(
+        result.error ?? {
+          code: "UNKNOWN",
+          message: "Não foi possível carregar as perguntas. Tente novamente.",
+        },
+      );
+      setBusy(false);
+      return;
     }
+    if (result.fields.length) {
+      setPartial({
+        customFields: result.fields,
+        customFieldIndex: 0,
+        step: "custom-fields",
+      });
+      setBusy(false);
+      return;
+    }
+    setPartial({ customFields: [], customFieldValues: {}, step: "customer" });
+    setBusy(false);
+    if (state.customerPhone) await handleLookupCustomer();
+  };
+
+  const handleFinishCustomFields = async () => {
+    const field = state.customFields[state.customFieldIndex];
+    if (!field) return;
+    if (field.required && !(state.customFieldValues[field.id] ?? "").trim()) {
+      setError({
+        code: "CUSTOM_FIELD_REQUIRED",
+        message: `Informe ${field.label}.`,
+      });
+      return;
+    }
+
+    if (state.customFieldIndex + 1 < state.customFields.length) {
+      setPartial({ customFieldIndex: state.customFieldIndex + 1 });
+      return;
+    }
+
+    setPartial({ step: "customer" });
+    if (state.customerPhone) await handleLookupCustomer();
   };
 
   const handleCreate = async () => {
     setBusy(true);
-    const customValues = state.customFields.map((field) => ({
-      customFieldId: field.id,
-      value: state.customFieldValues[field.id] ?? "",
-    }));
+    const customValues = buildSimulatorCustomValues(
+      state.customFields,
+      state.customFieldValues,
+    );
     const result = await createSimulatorAppointment(
       state.tenantSlug,
       state.sessionId,
       state.customerId,
       state.selectedServiceId,
       state.selectedSlotStartsAt,
-      customValues.filter((cv) => cv.value !== ""),
+      customValues,
       state.customerNotes,
     );
     addLog(result.log);
@@ -305,7 +554,7 @@ export function TypebotSimulator() {
       setError(
         result.error ?? {
           code: "UNKNOWN",
-          message: "Erro ao criar agendamento.",
+          message: "Não foi possível confirmar o agendamento. Tente novamente.",
         },
       );
     }
@@ -321,16 +570,27 @@ export function TypebotSimulator() {
       tenantAvailable: false,
       tenantUnavailableReason: "",
       business: null,
+      categories: [],
+      selectedCategoryId: "",
+      selectedCategoryName: "",
       customerPhone: "",
       customerName: "",
       customerEmail: "",
       customerId: "",
       sessionId: "",
+      customerLookupStatus: "",
+      matchedCustomerName: "",
       services: [],
       selectedServiceId: "",
       selectedServiceName: "",
       serviceDetail: null,
       customFields: [],
+      customFieldIndex: 0,
+      availableDates: [],
+      selectedDate: "",
+      nextStartDate: "",
+      periods: [],
+      selectedPeriod: "",
       slots: [],
       selectedSlotStartsAt: "",
       selectedSlotLabel: "",
@@ -393,7 +653,7 @@ export function TypebotSimulator() {
           <div className="flex items-start gap-2">
             <XCircle className="mt-0.5 size-4 shrink-0" />
             <div>
-              <p className="font-medium">Erro: {state.error.code}</p>
+              <p className="font-medium">Não foi possível continuar</p>
               <p>{state.error.message}</p>
             </div>
           </div>
@@ -467,17 +727,107 @@ export function TypebotSimulator() {
         </Card>
       )}
 
+      {state.step === "intent" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="space-y-1">
+              <span className="block">Olá! 👋</span>
+              <span className="block">
+                Como posso ajudar você na {state.tenantName}?
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button onClick={handleChooseBooking} disabled={busy}>
+              Agendar um horário
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setPartial({ step: "handoff" })}
+            >
+              Falar com atendente
+            </Button>
+            <Button variant="ghost" onClick={() => goToStep("tenant")}>
+              Voltar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {state.step === "handoff" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Atendimento com o estabelecimento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              O fluxo automático foi encerrado. O atendimento continuará com o
+              estabelecimento e nenhum agendamento foi criado.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {state.business?.whatsappUrl && (
+                <Button asChild>
+                  <Link href={state.business.whatsappUrl} target="_blank">
+                    Abrir WhatsApp do estabelecimento
+                  </Link>
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => goToStep("intent")}>
+                Voltar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {state.step === "categories" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Qual tipo de serviço você procura?</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {state.categories.map((category) => (
+              <button
+                type="button"
+                key={category.id}
+                className={`w-full rounded-lg border p-4 text-left transition-colors hover:border-primary ${
+                  state.selectedCategoryId === category.id
+                    ? "border-primary bg-primary/5"
+                    : ""
+                }`}
+                onClick={() =>
+                  handleSelectCategory(category.id, category.name)
+                }
+              >
+                <span className="font-medium">{category.name}</span>
+              </button>
+            ))}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => goToStep("intent")}>
+                Voltar
+              </Button>
+              <Button
+                onClick={handleFetchServices}
+                disabled={busy || !state.selectedCategoryId}
+              >
+                {busy ? "Carregando..." : "Ver serviços"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {state.step === "customer" && (
         <Card>
           <CardHeader>
             <CardTitle>
-              Dados do cliente — {state.tenantName} ({state.tenantSlug})
+              Identificação do cliente — {state.tenantName}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+            {!state.sessionId && !state.customerPhone && (
               <div>
-                <Label htmlFor="phone">Telefone (com DDD) *</Label>
+                <Label htmlFor="phone">Informe seu telefone com DDD.</Label>
                 <Input
                   id="phone"
                   placeholder="(11) 99999-9999"
@@ -488,7 +838,42 @@ export function TypebotSimulator() {
                     })
                   }
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  No canal real, este valor vem da sessão do WhatsApp.
+                </p>
               </div>
+            )}
+
+            {state.customerLookupStatus === "FOUND" && (
+              <div className="rounded-lg border p-4">
+                <p className="font-medium">
+                  Encontrei um cadastro em nome de {state.matchedCustomerName}.
+                </p>
+                <p className="mt-1 font-medium">
+                  Posso usar esses dados?
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => handleResolveCustomer("CONFIRM")}
+                    disabled={busy}
+                  >
+                    Sim, continuar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      setPartial({ customerLookupStatus: "NOT_FOUND" })
+                    }
+                  >
+                    Não sou eu
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {(state.customerLookupStatus === "NOT_FOUND" ||
+              state.customerLookupStatus === "AMBIGUOUS") && (
+              <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="name">Nome *</Label>
                 <Input
@@ -500,29 +885,46 @@ export function TypebotSimulator() {
                   }
                 />
               </div>
-            </div>
-            <div>
-              <Label htmlFor="email">E-mail (opcional)</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="joao@email.com"
-                value={state.customerEmail}
-                onChange={(e) =>
-                  setPartial({ customerEmail: e.target.value })
-                }
-              />
-            </div>
+                <div>
+                  <Label htmlFor="email">E-mail (opcional)</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="joao@email.com"
+                    value={state.customerEmail}
+                    onChange={(e) =>
+                      setPartial({ customerEmail: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+            )}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => goToStep("tenant")}>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  goToStep(state.customFields.length ? "custom-fields" : "slots")
+                }
+              >
                 Voltar
               </Button>
-              <Button
-                onClick={handleIdentify}
-                disabled={busy || !state.customerPhone || !state.customerName}
-              >
-                {busy ? "Identificando..." : "Identificar cliente"}
-              </Button>
+              {!state.sessionId && (
+                <Button
+                  onClick={handleLookupCustomer}
+                  disabled={busy || !state.customerPhone}
+                >
+                  {busy ? "Procurando..." : "Procurar cadastro"}
+                </Button>
+              )}
+              {(state.customerLookupStatus === "NOT_FOUND" ||
+                state.customerLookupStatus === "AMBIGUOUS") && (
+                <Button
+                  onClick={() => handleResolveCustomer("CREATE")}
+                  disabled={busy || !state.customerName}
+                >
+                  {busy ? "Salvando..." : "Continuar com novo cadastro"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -531,7 +933,7 @@ export function TypebotSimulator() {
       {state.step === "services" && (
         <Card>
           <CardHeader>
-            <CardTitle>Serviços — {state.tenantName}</CardTitle>
+            <CardTitle>Agora escolha o serviço:</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {!state.services.length && (
@@ -569,7 +971,7 @@ export function TypebotSimulator() {
 
             {state.services.length > 0 && (
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" onClick={() => goToStep("customer")}>
+                <Button variant="outline" onClick={() => goToStep("categories")}>
                   Voltar
                 </Button>
                 <Button
@@ -645,12 +1047,127 @@ export function TypebotSimulator() {
               </div>
             )}
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
               <Button variant="outline" onClick={() => goToStep("services")}>
                 Voltar
               </Button>
-              <Button onClick={handleFetchSlots} disabled={busy}>
-                {busy ? "Carregando..." : "Buscar horários"}
+              <Button
+                onClick={() => handleFetchAvailableDates()}
+                disabled={busy}
+              >
+                {busy ? "Carregando..." : "Buscar datas disponíveis"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {state.step === "dates" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Qual data fica melhor para você?</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {state.availableDates.map((date) => (
+              <button
+                type="button"
+                key={date.date}
+                className={`w-full rounded-lg border p-4 text-left transition-colors hover:border-primary ${
+                  state.selectedDate === date.date
+                    ? "border-primary bg-primary/5"
+                    : ""
+                }`}
+                onClick={() => handleSelectDate(date.date)}
+              >
+                <span className="font-medium">{date.label}</span>
+              </button>
+            ))}
+
+            {!state.availableDates.length && (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma data disponível neste período.
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setPartial({
+                    step: "services",
+                    selectedDate: "",
+                    periods: [],
+                    selectedPeriod: "",
+                    slots: [],
+                    selectedSlotStartsAt: "",
+                    appointmentId: "",
+                  })
+                }
+              >
+                Voltar
+              </Button>
+              {state.nextStartDate && (
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    handleFetchAvailableDates(state.nextStartDate)
+                  }
+                  disabled={busy}
+                >
+                  {busy ? "Carregando..." : "Ver mais datas"}
+                </Button>
+              )}
+              <Button
+                onClick={handleFetchPeriods}
+                disabled={busy || !state.selectedDate}
+              >
+                {busy ? "Carregando..." : "Ver turnos"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {state.step === "periods" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Qual turno você prefere?</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {state.periods.map((period) => (
+              <button
+                type="button"
+                key={period.value}
+                className={`w-full rounded-lg border p-4 text-left transition-colors hover:border-primary ${
+                  state.selectedPeriod === period.value
+                    ? "border-primary bg-primary/5"
+                    : ""
+                }`}
+                onClick={() => setPartial({ selectedPeriod: period.value })}
+              >
+                <span className="font-medium">{period.label}</span>
+              </button>
+            ))}
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setPartial({
+                    step: "dates",
+                    selectedPeriod: "",
+                    slots: [],
+                    selectedSlotStartsAt: "",
+                    appointmentId: "",
+                  })
+                }
+              >
+                Voltar
+              </Button>
+              <Button
+                onClick={handleFetchSlots}
+                disabled={busy || !state.selectedPeriod}
+              >
+                {busy ? "Carregando..." : "Ver horários"}
               </Button>
             </div>
           </CardContent>
@@ -660,9 +1177,7 @@ export function TypebotSimulator() {
       {state.step === "slots" && (
         <Card>
           <CardHeader>
-            <CardTitle>
-              Horários disponíveis — {state.selectedServiceName}
-            </CardTitle>
+            <CardTitle>Qual horário fica melhor?</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {state.slots.map((slot) => (
@@ -673,10 +1188,15 @@ export function TypebotSimulator() {
                     ? "border-primary bg-primary/5"
                     : ""
                 }`}
-                onClick={() => handleSelectSlot(slot.startsAt, slot.label)}
+                onClick={() =>
+                  handleSelectSlot(
+                    slot.startsAt,
+                    formatSlotTimeLabel(slot.label),
+                  )
+                }
               >
                 <p className="font-medium">
-                  {slot.number}. {slot.label}
+                  {slot.number}. {formatSlotTimeLabel(slot.label)}
                 </p>
               </div>
             ))}
@@ -684,12 +1204,19 @@ export function TypebotSimulator() {
             <div className="flex gap-2 pt-2">
               <Button
                 variant="outline"
-                onClick={() => goToStep("service-detail")}
+                onClick={() =>
+                  setPartial({
+                    step: state.periods.length > 1 ? "periods" : "dates",
+                    selectedSlotStartsAt: "",
+                    selectedSlotLabel: "",
+                    appointmentId: "",
+                  })
+                }
               >
                 Voltar
               </Button>
               <Button
-                onClick={handleGoToCustomFields}
+                onClick={handleGoToCustomer}
                 disabled={!state.selectedSlotStartsAt}
               >
                 Continuar
@@ -702,15 +1229,21 @@ export function TypebotSimulator() {
       {state.step === "custom-fields" && (
         <Card>
           <CardHeader>
-            <CardTitle>Campos personalizados</CardTitle>
+            <CardTitle>Precisamos de mais uma informação</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {state.customFields.map((field) => (
+            {state.customFields
+              .slice(state.customFieldIndex, state.customFieldIndex + 1)
+              .map((field) => (
               <div key={field.id}>
                 <Label htmlFor={`field-${field.id}`}>
-                  {field.label}
-                  {field.required && " *"}
+                  {field.label.replace(/[?]+$/, "")}?
                 </Label>
+                <p className="mb-2 mt-1 text-sm text-muted-foreground">
+                  {field.required
+                    ? "Digite sua resposta ou envie ‘Voltar’ para retornar."
+                    : "Digite sua resposta, envie ‘Pular’ para continuar ou ‘Voltar’ para retornar."}
+                </p>
                 {field.type === "SELECT" ? (
                   <Select
                     id={`field-${field.id}`}
@@ -760,7 +1293,7 @@ export function TypebotSimulator() {
                         },
                       })
                     }
-                    placeholder={field.label}
+                    placeholder={field.placeholder ?? field.label}
                   />
                 ) : (
                   <Input
@@ -787,11 +1320,41 @@ export function TypebotSimulator() {
               </div>
             ))}
 
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => goToStep("slots")}>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  state.customFieldIndex > 0
+                    ? setPartial({
+                        customFieldIndex: state.customFieldIndex - 1,
+                      })
+                    : goToStep("slots")
+                }
+              >
                 Voltar
               </Button>
-              <Button onClick={() => goToStep("confirm")}>Continuar</Button>
+              {state.customFields[state.customFieldIndex] &&
+                !state.customFields[state.customFieldIndex].required && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const field = state.customFields[state.customFieldIndex];
+                      if (!field) return;
+                      setPartial({
+                        customFieldValues: {
+                          ...state.customFieldValues,
+                          [field.id]: "",
+                        },
+                      });
+                      void handleFinishCustomFields();
+                    }}
+                  >
+                    Pular
+                  </Button>
+                )}
+              <Button onClick={() => void handleFinishCustomFields()}>
+                Continuar
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -800,28 +1363,22 @@ export function TypebotSimulator() {
       {state.step === "confirm" && (
         <Card>
           <CardHeader>
-            <CardTitle>Confirmar agendamento</CardTitle>
+            <CardTitle>Confira os dados do seu agendamento:</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <dl className="grid grid-cols-2 gap-2 text-sm">
-              <dt className="text-muted-foreground">Prestador</dt>
-              <dd className="font-medium">{state.tenantName}</dd>
               <dt className="text-muted-foreground">Serviço</dt>
               <dd className="font-medium">{state.selectedServiceName}</dd>
+              <dt className="text-muted-foreground">Data</dt>
+              <dd className="font-medium">{state.selectedDate}</dd>
               <dt className="text-muted-foreground">Horário</dt>
               <dd className="font-medium">{state.selectedSlotLabel}</dd>
               <dt className="text-muted-foreground">Cliente</dt>
               <dd>{state.customerName}</dd>
-              <dt className="text-muted-foreground">Telefone</dt>
-              <dd>{state.customerPhone}</dd>
-              {state.serviceDetail && (
+              {state.customerNotes.trim() !== "" && (
                 <>
-                  <dt className="text-muted-foreground">Modo</dt>
-                  <dd>
-                    <Badge variant="outline">
-                      {state.serviceDetail.bookingMode}
-                    </Badge>
-                  </dd>
+                  <dt className="text-muted-foreground">Observação</dt>
+                  <dd>{state.customerNotes.trim()}</dd>
                 </>
               )}
             </dl>
@@ -830,10 +1387,15 @@ export function TypebotSimulator() {
               Object.keys(state.customFieldValues).length > 0 && (
                 <div>
                   <p className="mb-1 text-sm font-medium">
-                    Campos personalizados:
+                    Dados adicionais:
                   </p>
                   <div className="rounded border p-2 text-sm">
-                    {state.customFields.map((field) => (
+                    {state.customFields
+                      .filter(
+                        (field) =>
+                          (state.customFieldValues[field.id] ?? "").trim() !== "",
+                      )
+                      .map((field) => (
                       <div key={field.id}>
                         <span className="text-muted-foreground">
                           {field.label}:{" "}
@@ -848,7 +1410,7 @@ export function TypebotSimulator() {
               )}
 
             <div>
-              <Label htmlFor="customerNotes">Observações</Label>
+              <Label htmlFor="customerNotes">Observações (opcional)</Label>
               <Input
                 id="customerNotes"
                 value={state.customerNotes}
@@ -859,21 +1421,18 @@ export function TypebotSimulator() {
               />
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
+              <p className="w-full font-medium">Está tudo certo?</p>
               <Button
                 variant="outline"
                 onClick={() =>
-                  goToStep(
-                    state.customFields.length ? "custom-fields" : "slots",
-                  )
+                  setPartial({ step: "customer", appointmentId: "" })
                 }
               >
                 Voltar
               </Button>
               <Button onClick={handleCreate} disabled={busy}>
-                {busy
-                  ? "Criando..."
-                  : "Criar agendamento (origin=WHATSAPP)"}
+                {busy ? "Confirmando..." : "Confirmar agendamento"}
               </Button>
             </div>
           </CardContent>
@@ -885,7 +1444,9 @@ export function TypebotSimulator() {
           <CardHeader>
             <CardTitle className="text-green-600">
               <CheckCircle2 className="mr-2 inline size-5" />
-              Agendamento criado com sucesso
+              {state.appointmentStatus === "CONFIRMED"
+                ? "Agendamento confirmado! ✅"
+                : "Solicitação enviada! ✅"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -909,7 +1470,9 @@ export function TypebotSimulator() {
               <dt className="text-muted-foreground">Origem</dt>
               <dd>WHATSAPP</dd>
               <dt className="text-muted-foreground">Mensagem</dt>
-              <dd className="font-medium">{state.appointmentMessage}</dd>
+              <dd className="whitespace-pre-line font-medium">
+                {state.appointmentMessage}
+              </dd>
             </dl>
 
             <div className="flex gap-2 pt-2">

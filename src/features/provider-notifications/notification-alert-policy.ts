@@ -4,9 +4,15 @@ import type {
 } from "@/features/provider-notifications/types";
 
 export type ProviderNotificationAlertDecision = {
-  toast: boolean;
+  alert: boolean;
   sound: boolean;
 };
+
+export type ProviderNotificationDeliveryDecision =
+  ProviderNotificationAlertDecision & {
+    toast: boolean;
+    native: boolean;
+  };
 
 export function providerNotificationAlertDecision(
   notification: ProviderNotification,
@@ -14,30 +20,55 @@ export function providerNotificationAlertDecision(
   initialLoad: boolean,
 ): ProviderNotificationAlertDecision {
   if (initialLoad || !preferences.panelNotificationsEnabled) {
-    return { toast: false, sound: false };
+    return { alert: false, sound: false };
   }
   if (
     notification.type === "public_booking_created" ||
     notification.type === "booking_confirmation_required"
   ) {
     const enabled = preferences.publicBookingNotificationsEnabled;
-    return { toast: enabled, sound: enabled && preferences.soundEnabled };
+    return { alert: enabled, sound: enabled && preferences.soundEnabled };
   }
   if (notification.type === "payment_pending") {
     return {
-      toast: preferences.paymentNotificationsEnabled,
+      alert: preferences.paymentNotificationsEnabled,
       sound: false,
     };
   }
   if (notification.type === "booking_canceled") {
-    return { toast: preferences.cancellationNotificationsEnabled, sound: false };
+    return { alert: preferences.cancellationNotificationsEnabled, sound: false };
   }
   if (notification.type === "booking_rescheduled") {
-    return { toast: preferences.rescheduleNotificationsEnabled, sound: false };
+    return { alert: preferences.rescheduleNotificationsEnabled, sound: false };
   }
   return {
-    toast:
+    alert:
       notification.priority === "high" || notification.priority === "critical",
     sound: false,
+  };
+}
+
+export function providerNotificationDeliveryDecision({
+  notification,
+  preferences,
+  initialLoad,
+  visibility,
+}: {
+  notification: ProviderNotification;
+  preferences: ProviderNotificationPreferences;
+  initialLoad: boolean;
+  visibility: DocumentVisibilityState;
+}): ProviderNotificationDeliveryDecision {
+  const alert = providerNotificationAlertDecision(
+    notification,
+    preferences,
+    initialLoad,
+  );
+  const visible = visibility === "visible";
+  return {
+    alert: alert.alert,
+    toast: alert.alert && visible,
+    native: alert.alert && !visible,
+    sound: alert.sound,
   };
 }

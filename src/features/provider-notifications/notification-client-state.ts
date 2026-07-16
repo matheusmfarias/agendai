@@ -46,25 +46,75 @@ export function providerNotificationListUrl({
 
 export function observeProviderNotificationPoll({
   ids,
-  seenIds,
+  observedIds,
+  deliveredAlertIds,
   baselineEstablished,
   allowAlerts,
 }: {
   ids: readonly string[];
-  seenIds: Set<string>;
+  observedIds: Set<string>;
+  deliveredAlertIds: Set<string>;
   baselineEstablished: boolean;
   allowAlerts: boolean;
 }) {
   if (!baselineEstablished) {
-    for (const id of ids) seenIds.add(id);
-    return { baselineEstablished: true, freshIds: [] as string[] };
+    for (const id of ids) {
+      observedIds.add(id);
+      deliveredAlertIds.add(id);
+    }
+    return { baselineEstablished: true, alertCandidateIds: [] as string[] };
   }
+  for (const id of ids) observedIds.add(id);
   if (!allowAlerts) {
-    return { baselineEstablished: true, freshIds: [] as string[] };
+    return { baselineEstablished: true, alertCandidateIds: [] as string[] };
   }
-  const freshIds = ids.filter((id) => !seenIds.has(id));
-  for (const id of ids) seenIds.add(id);
-  return { baselineEstablished: true, freshIds };
+  return {
+    baselineEstablished: true,
+    alertCandidateIds: ids.filter((id) => !deliveredAlertIds.has(id)),
+  };
+}
+
+export function markProviderNotificationAlertDelivered(
+  deliveredAlertIds: Set<string>,
+  notificationId: string,
+) {
+  if (deliveredAlertIds.has(notificationId)) return false;
+  deliveredAlertIds.add(notificationId);
+  return true;
+}
+
+export function recordProviderNotificationAlertDelivery({
+  notification,
+  delivered,
+  pending,
+  deliveredAlertIds,
+}: {
+  notification: ProviderNotification;
+  delivered: boolean;
+  pending: Map<string, ProviderNotification>;
+  deliveredAlertIds: Set<string>;
+}) {
+  if (!delivered) {
+    if (!deliveredAlertIds.has(notification.id)) {
+      pending.set(notification.id, notification);
+    }
+    return false;
+  }
+  pending.delete(notification.id);
+  return markProviderNotificationAlertDelivered(
+    deliveredAlertIds,
+    notification.id,
+  );
+}
+
+export function pendingProviderNotificationForVisibleTab(
+  pending: ReadonlyMap<string, ProviderNotification>,
+  deliveredAlertIds: ReadonlySet<string>,
+) {
+  for (const notification of pending.values()) {
+    if (!deliveredAlertIds.has(notification.id)) return notification;
+  }
+  return null;
 }
 
 export function mergePendingProviderNotificationPoll(

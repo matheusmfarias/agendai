@@ -7,6 +7,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { generateTypebotToken } from "@/features/typebot/typebot-token-utils";
+import { encryptTypebotCredential } from "@/features/typebot/typebot-credential-crypto";
 
 // Re-export for convenience
 export { generateTypebotToken, hashToken } from "@/features/typebot/typebot-token-utils";
@@ -31,6 +32,7 @@ export async function createTypebotCredential(
   input: CreateCredentialInput,
 ): Promise<CreatedCredential> {
   const { token, hash, prefix } = generateTypebotToken();
+  const tokenEncrypted = encryptTypebotCredential(token);
 
   const record = await prisma.typebotCredential.create({
     data: {
@@ -38,6 +40,7 @@ export async function createTypebotCredential(
       name: input.name,
       tokenHash: hash,
       tokenPrefix: prefix,
+      tokenEncrypted,
     },
     select: { id: true, name: true, tokenPrefix: true },
   });

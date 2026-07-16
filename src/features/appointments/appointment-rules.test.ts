@@ -56,6 +56,8 @@ describe("appointment rules", () => {
 
   it("valida as transições mínimas", () => {
     expect(canTransitionAppointmentStatus("CONFIRMED", "IN_PROGRESS")).toBe(true);
+    expect(canTransitionAppointmentStatus("CONFIRMED", "FINISHED")).toBe(true);
+    expect(canTransitionAppointmentStatus("RESCHEDULED", "FINISHED")).toBe(true);
     expect(canTransitionAppointmentStatus("IN_PROGRESS", "FINISHED")).toBe(true);
     expect(canTransitionAppointmentStatus("FINISHED", "CONFIRMED")).toBe(false);
     expect(

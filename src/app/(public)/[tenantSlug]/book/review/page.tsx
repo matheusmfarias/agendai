@@ -3,8 +3,12 @@ import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { getCurrentUser } from "@/features/auth/permissions";
+import {
+  formatPublicBookingDate,
+  formatPublicBookingTime,
+} from "@/features/public-booking/public-booking-date-time";
 import { PublicBookingReviewForm } from "@/features/public-booking/public-booking-review-form";
-import { getPublicBookingData } from "@/features/public-booking/public-booking-service";
+import { getPublicBookingReviewData } from "@/features/public-booking/public-booking-service";
 import { PublicShell } from "@/features/public-booking/public-shell";
 import { PublicUnavailablePage } from "@/features/public-booking/public-unavailable";
 import { parseLocalDateTimeInTimezone } from "@/features/booking-core/timezone";
@@ -31,38 +35,6 @@ function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
-function formatDateTitle(date: Date, timezone: string) {
-  const month = new Intl.DateTimeFormat("pt-BR", {
-    month: "long",
-    timeZone: timezone,
-  }).format(date);
-  const weekday = new Intl.DateTimeFormat("pt-BR", {
-    weekday: "long",
-    timeZone: timezone,
-  }).format(date);
-  const day = new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    timeZone: timezone,
-  }).format(date);
-  const year = new Intl.DateTimeFormat("pt-BR", {
-    year: "numeric",
-    timeZone: timezone,
-  }).format(date);
-
-  return `${month.charAt(0).toUpperCase()}${month.slice(
-    1,
-  )}, ${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${day} ${year}`;
-}
-
-function formatTime(date: Date, timezone: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone: timezone,
-  }).format(date);
-}
-
 export default async function TenantBookReviewPage({
   params,
   searchParams,
@@ -70,19 +42,23 @@ export default async function TenantBookReviewPage({
   params: Promise<{ tenantSlug: string }>;
   searchParams: Promise<{ serviceId?: string; startsAt?: string }>;
 }) {
-  const { tenantSlug } = await params;
-  const { serviceId, startsAt } = await searchParams;
+  const [{ tenantSlug }, { serviceId, startsAt }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
 
   if (!serviceId || !startsAt) {
     return <PublicUnavailablePage />;
   }
 
-  const currentUser = await getCurrentUser();
+  const [currentUser, data] = await Promise.all([
+    getCurrentUser(),
+    getPublicBookingReviewData(tenantSlug, serviceId, startsAt),
+  ]);
   if (!currentUser || String(currentUser.globalRole) !== "CUSTOMER") {
     redirect(`/${tenantSlug}/book?serviceId=${serviceId}`);
   }
 
-  const data = await getPublicBookingData(tenantSlug, serviceId);
   if (!data.available || !data.selectedService) {
     return <PublicUnavailablePage />;
   }
@@ -117,15 +93,24 @@ export default async function TenantBookReviewPage({
         </Link>
 
         <section className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            {formatDateTitle(startsAtDate, tenant.timezone)}
+          <h1 className="text-balance text-xl font-bold leading-tight tracking-tight text-foreground sm:text-2xl">
+            {formatPublicBookingDate(startsAtDate, tenant.timezone)}
           </h1>
-          <p className="mt-1 text-2xl text-foreground">
-            {formatTime(startsAtDate, tenant.timezone)} -{" "}
-            {formatTime(endsAtDate, tenant.timezone)} (
-            {selectedService.durationMinutes}min)
+          <div className="mt-2 flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1">
+            <p className="whitespace-nowrap text-xl font-semibold tabular-nums text-foreground">
+              {formatPublicBookingTime(startsAtDate, tenant.timezone)} –{" "}
+              {formatPublicBookingTime(endsAtDate, tenant.timezone)}
+            </p>
+            <span className="text-sm text-muted-foreground" aria-hidden="true">
+              ·
+            </span>
+            <p className="whitespace-nowrap text-sm font-medium text-muted-foreground">
+              {selectedService.durationMinutes} min
+            </p>
+          </div>
+          <p className="mt-2 text-sm leading-snug text-muted-foreground">
+            {tenantName}
           </p>
-          <p className="mt-2 text-sm text-muted-foreground">{tenantName}</p>
         </section>
 
         <section className="rounded-lg bg-muted px-4 py-4">
@@ -141,8 +126,8 @@ export default async function TenantBookReviewPage({
             <div className="shrink-0 text-right">
               <p className="text-sm text-foreground">{totalLabel}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {formatTime(startsAtDate, tenant.timezone)} -{" "}
-                {formatTime(endsAtDate, tenant.timezone)}
+                {formatPublicBookingTime(startsAtDate, tenant.timezone)} -{" "}
+                {formatPublicBookingTime(endsAtDate, tenant.timezone)}
               </p>
             </div>
           </div>

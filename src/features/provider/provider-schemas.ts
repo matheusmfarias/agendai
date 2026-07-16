@@ -77,23 +77,6 @@ export const providerSettingsSchema = z
     allowCustomerCancellation: formBoolean,
     allowCustomerRescheduling: formBoolean,
     cancellationNoticeHours: z.coerce.number().int().min(0).max(720),
-    confirmationMessageTemplate: z
-      .string()
-      .trim()
-      .min(10, "Informe a mensagem de confirmação.")
-      .max(1000),
-    reminderMessageTemplate: z
-      .string()
-      .trim()
-      .min(10, "Informe a mensagem de lembrete.")
-      .max(1000),
-    cancellationMessageTemplate: z
-      .string()
-      .trim()
-      .min(10, "Informe a mensagem de cancelamento.")
-      .max(1000),
-    enableAutomaticReminders: formBoolean,
-    reminderLeadHours: z.coerce.number().int().min(1).max(168),
     description: z.string().trim().max(2000).optional(),
   })
   .transform((data) => ({

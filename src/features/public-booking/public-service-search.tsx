@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo, useState, useTransition } from "react";
 import { Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,9 @@ export function PublicServiceSearch({
   tenantSlug,
 }: PublicServiceSearchProps) {
   const [query, setQuery] = useState("");
+  const router = useRouter();
+  const [pendingServiceId, setPendingServiceId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const normalizedQuery = normalizeSearch(query);
   const totalServices = categories.reduce(
     (total, category) => total + category.services.length,
@@ -72,8 +76,21 @@ export function PublicServiceSearch({
     (category) => category.services.length > 0,
   );
 
+  function selectService(serviceId: string) {
+    if (isPending) return;
+    setPendingServiceId(serviceId);
+    startTransition(() => {
+      router.push(`/${tenantSlug}/book?serviceId=${serviceId}`);
+    });
+  }
+
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" aria-busy={isPending}>
+      {isPending ? (
+        <p className="sr-only" role="status">
+          Carregando horários do serviço selecionado.
+        </p>
+      ) : null}
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold tracking-tight text-foreground">
@@ -108,6 +125,9 @@ export function PublicServiceSearch({
               key={category.id}
               category={category}
               tenantSlug={tenantSlug}
+              disabled={isPending}
+              pendingServiceId={pendingServiceId}
+              onSelectService={selectService}
             />
           ))}
         </div>

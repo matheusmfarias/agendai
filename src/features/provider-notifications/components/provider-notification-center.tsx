@@ -31,15 +31,24 @@ import type {
   ProviderNotificationsResponse,
 } from "@/features/provider-notifications/types";
 import { DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES } from "@/features/provider-notifications/types";
-import { providerNotificationAlertDecision } from "@/features/provider-notifications/notification-alert-policy";
+import {
+  providerNotificationAlertDecision,
+  providerNotificationDeliveryDecision,
+} from "@/features/provider-notifications/notification-alert-policy";
 import { createProviderNotificationPreferenceQueue } from "@/features/provider-notifications/notification-preference-queue";
+import {
+  createProviderNativeNotification,
+  playProviderNotificationAudio,
+} from "@/features/provider-notifications/notification-browser-alerts";
 import { lockPageScroll } from "@/features/provider-notifications/page-scroll-lock";
 import {
   consumeUnreadTransition,
   mergeProviderNotificationPages,
   mergePendingProviderNotificationPoll,
   observeProviderNotificationPoll,
+  pendingProviderNotificationForVisibleTab,
   providerNotificationListUrl,
+  recordProviderNotificationAlertDelivery,
   unreadNotificationIds,
 } from "@/features/provider-notifications/notification-client-state";
 import {
@@ -58,11 +67,17 @@ type NotificationCenterContextValue = {
   preferences: ProviderNotificationPreferences;
   preferencesLoaded: boolean;
   soundFeedback: string | null;
+  soundRuntimeFeedback: string | null;
+  nativePermission: NotificationPermission | "unsupported";
+  nativeFeedback: string | null;
+  nativeTestFeedback: string | null;
   updatePreference: (
     key: keyof ProviderNotificationPreferences,
     value: boolean,
   ) => Promise<boolean>;
   testSound: () => Promise<boolean>;
+  requestNativePermission: () => Promise<NotificationPermission | "unsupported">;
+  testNativeNotification: () => Promise<void>;
 };
 
 const NotificationCenterContext =
@@ -183,12 +198,26 @@ export function ProviderNotificationCenter({
   const [showSoundPrompt, setShowSoundPrompt] = useState(false);
   const [agendaHighlightVisible, setAgendaHighlightVisible] = useState(false);
   const [soundFeedback, setSoundFeedback] = useState<string | null>(null);
+  const [soundRuntimeFeedback, setSoundRuntimeFeedback] = useState<
+    string | null
+  >(null);
+  const [nativePermission, setNativePermission] = useState<
+    NotificationPermission | "unsupported"
+  >("unsupported");
+  const [nativeFeedback, setNativeFeedback] = useState<string | null>(null);
+  const [nativeTestFeedback, setNativeTestFeedback] = useState<string | null>(
+    null,
+  );
   const [preferences, setPreferences] =
     useState<ProviderNotificationPreferences>(
       DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
     );
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
-  const seenIds = useRef(new Set<string>());
+  const observedIds = useRef(new Set<string>());
+  const deliveredAlertIds = useRef(new Set<string>());
+  const pendingAlerts = useRef(new Map<string, ProviderNotification>());
+  const soundPlayedIds = useRef(new Set<string>());
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const initialLoadComplete = useRef(false);
   const preferencesRef = useRef<ProviderNotificationPreferences>(
     DEFAULT_PROVIDER_NOTIFICATION_PREFERENCES,
@@ -238,31 +267,128 @@ export function ProviderNotificationCenter({
         : baseTitle.current;
   }, []);
 
-  const playSound = useCallback(() => {
-    if (!preferencesRef.current.soundEnabled) return;
-    const audio = new Audio("/sounds/new-booking.mp3");
-    audio.volume = 0.35;
-    void audio.play().catch(() => {
-      setSoundFeedback(
-        "O navegador bloqueou o som. Interaja com a página e tente novamente.",
-      );
-    });
-  }, []);
-
-  const testSound = useCallback(async () => {
-    const audio = new Audio("/sounds/new-booking.mp3");
-    audio.volume = 0.2;
+  const getAudio = useCallback(() => {
     try {
-      await audio.play();
-      setSoundFeedback("Som de teste reproduzido com sucesso.");
-      return true;
+      if (!audioRef.current) {
+        audioRef.current = new Audio("/sounds/new-booking.mp3");
+      }
+      return audioRef.current;
     } catch {
-      setSoundFeedback(
-        "O navegador bloqueou o som. Interaja com a página e tente novamente.",
-      );
-      return false;
+      return null;
     }
   }, []);
+
+  const playSound = useCallback(async () => {
+    if (!preferencesRef.current.soundEnabled) return false;
+    const audio = getAudio();
+    if (audio) audio.volume = 0.35;
+    const result = await playProviderNotificationAudio(audio);
+    if (result === "played") {
+      setSoundRuntimeFeedback("O último alerta sonoro foi reproduzido.");
+      return true;
+    }
+    setSoundRuntimeFeedback(
+      result === "blocked"
+        ? "O último alerta sonoro foi bloqueado pelo navegador."
+        : "O navegador não disponibilizou o recurso de áudio.",
+    );
+    return false;
+  }, [getAudio]);
+
+  const testSound = useCallback(async () => {
+    const audio = getAudio();
+    if (audio) audio.volume = 0.2;
+    const result = await playProviderNotificationAudio(audio);
+    if (result === "played") {
+      setSoundFeedback("Som de teste reproduzido com sucesso.");
+      return true;
+    }
+    setSoundFeedback(
+      result === "blocked"
+        ? "O navegador bloqueou o teste de som. Interaja com a página e tente novamente."
+        : "O navegador não disponibilizou o recurso de áudio.",
+    );
+    return false;
+  }, [getAudio]);
+
+  const requestNativePermission = useCallback(async () => {
+    if (!("Notification" in window)) {
+      setNativePermission("unsupported");
+      setNativeFeedback(
+        "Este navegador não oferece notificações nativas nesta página.",
+      );
+      return "unsupported";
+    }
+    try {
+      const permission = await window.Notification.requestPermission();
+      setNativePermission(permission);
+      setNativeFeedback(
+        permission === "granted"
+          ? "Notificações do navegador ativadas."
+          : permission === "denied"
+            ? "A permissão foi bloqueada. Altere-a nas configurações do navegador."
+            : "A permissão não foi concedida.",
+      );
+      return permission;
+    } catch {
+      setNativeFeedback("Não foi possível solicitar a permissão do navegador.");
+      return window.Notification.permission;
+    }
+  }, []);
+
+  const showNativeNotification = useCallback(
+    (notification: ProviderNotification) =>
+      createProviderNativeNotification({
+        notification,
+        NotificationApi:
+          "Notification" in window ? window.Notification : null,
+        focusWindow: () => window.focus(),
+        navigate: (url) => router.push(url),
+      }),
+    [router],
+  );
+
+  const testNativeNotification = useCallback(async () => {
+    let permission: NotificationPermission | "unsupported" =
+      "Notification" in window
+        ? window.Notification.permission
+        : "unsupported";
+    if (permission === "default") {
+      permission = await requestNativePermission();
+    }
+    if (permission !== "granted") {
+      setNativeTestFeedback(
+        permission === "denied"
+          ? "Teste não executado: permissão bloqueada."
+          : permission === "unsupported"
+            ? "Teste não executado: API indisponível."
+            : "Teste não executado: permissão não ativada.",
+      );
+      return;
+    }
+    const result = showNativeNotification({
+      id: `test-${Date.now()}`,
+      tenantId,
+      recipientUserId: userId,
+      audience: "USER",
+      type: "system",
+      priority: "medium",
+      title: "Teste de notificação do Agendaí",
+      description: "As notificações deste navegador estão funcionando.",
+      entityType: null,
+      entityId: null,
+      actionUrl: "/app",
+      readAt: null,
+      archivedAt: null,
+      createdAt: new Date().toISOString(),
+      metadata: null,
+    });
+    setNativeTestFeedback(
+      result === "created"
+        ? "Notificação de teste criada com sucesso."
+        : "O navegador não conseguiu criar a notificação de teste.",
+    );
+  }, [requestNativePermission, showNativeNotification, tenantId, userId]);
 
   const applyPreferences = useCallback(
     (next: ProviderNotificationPreferences) => {
@@ -332,6 +458,93 @@ export function ProviderNotificationCenter({
     }, 5000);
   }, [applyCountTitle]);
 
+  const recordAlertDelivery = useCallback(
+    (notification: ProviderNotification, delivered: boolean) => {
+      const newlyDelivered = recordProviderNotificationAlertDelivery({
+        notification,
+        delivered,
+        pending: pendingAlerts.current,
+        deliveredAlertIds: deliveredAlertIds.current,
+      });
+      if (newlyDelivered) {
+        coordinatorRef.current?.publish({
+          type: "alert-delivered",
+          notificationId: notification.id,
+        });
+      }
+      return newlyDelivered;
+    },
+    [],
+  );
+
+  const deliverAlert = useCallback(
+    async (notification: ProviderNotification) => {
+      if (deliveredAlertIds.current.has(notification.id)) return false;
+      const decision = providerNotificationDeliveryDecision({
+        notification,
+        preferences: preferencesRef.current,
+        initialLoad: false,
+        visibility: document.visibilityState,
+      });
+      if (!decision.alert) return false;
+
+      let delivered = false;
+      if (decision.toast) {
+        setToast(notification);
+        delivered = true;
+      } else if (decision.native) {
+        delivered = showNativeNotification(notification) === "created";
+      }
+
+      if (delivered) {
+        recordAlertDelivery(notification, true);
+        if (isBookingNotification(notification)) {
+          showTemporaryBookingTitle();
+          if (pathnameRef.current.startsWith("/app/appointments")) {
+            router.refresh();
+            if (notification.metadata?.bookingDate === currentDateRef.current) {
+              setAgendaHighlightVisible(true);
+              if (agendaHighlightTimer.current) {
+                window.clearTimeout(agendaHighlightTimer.current);
+              }
+              agendaHighlightTimer.current = window.setTimeout(
+                () => setAgendaHighlightVisible(false),
+                6000,
+              );
+            }
+          }
+        }
+      } else {
+        recordAlertDelivery(notification, false);
+      }
+
+      if (
+        decision.sound &&
+        !soundPlayedIds.current.has(notification.id) &&
+        (await playSound())
+      ) {
+        soundPlayedIds.current.add(notification.id);
+      }
+      return delivered;
+    },
+    [
+      playSound,
+      recordAlertDelivery,
+      router,
+      showNativeNotification,
+      showTemporaryBookingTitle,
+    ],
+  );
+
+  const deliverPendingVisibleAlert = useCallback(async () => {
+    if (document.visibilityState !== "visible") return false;
+    const pending = pendingProviderNotificationForVisibleTab(
+      pendingAlerts.current,
+      deliveredAlertIds.current,
+    );
+    return pending ? deliverAlert(pending) : false;
+  }, [deliverAlert]);
+
   const loadNotifications = useCallback(
     async (allowAlerts: boolean) => {
       if (requestInFlight.current) {
@@ -362,12 +575,13 @@ export function ProviderNotificationCenter({
           (await response.json()) as ProviderNotificationsResponse;
         const observation = observeProviderNotificationPoll({
           ids: payload.notifications.map(({ id }) => id),
-          seenIds: seenIds.current,
+          observedIds: observedIds.current,
+          deliveredAlertIds: deliveredAlertIds.current,
           baselineEstablished: initialLoadComplete.current,
           allowAlerts,
         });
         initialLoadComplete.current = observation.baselineEstablished;
-        const freshIds = new Set(observation.freshIds);
+        const freshIds = new Set(observation.alertCandidateIds);
         const fresh = payload.notifications.filter(({ id }) =>
           freshIds.has(id),
         );
@@ -379,32 +593,10 @@ export function ProviderNotificationCenter({
                 notification,
                 preferencesRef.current,
                 false,
-              ).toast,
+              ).alert,
           );
           if (newest) {
-            setToast(newest);
-            const decision = providerNotificationAlertDecision(
-              newest,
-              preferencesRef.current,
-              false,
-            );
-            if (isBookingNotification(newest)) {
-              if (decision.sound) playSound();
-              showTemporaryBookingTitle();
-              if (pathnameRef.current.startsWith("/app/appointments")) {
-                router.refresh();
-                if (newest.metadata?.bookingDate === currentDateRef.current) {
-                  setAgendaHighlightVisible(true);
-                  if (agendaHighlightTimer.current) {
-                    window.clearTimeout(agendaHighlightTimer.current);
-                  }
-                  agendaHighlightTimer.current = window.setTimeout(
-                    () => setAgendaHighlightVisible(false),
-                    6000,
-                  );
-                }
-              }
-            }
+            await deliverAlert(newest);
           }
         }
 
@@ -451,7 +643,7 @@ export function ProviderNotificationCenter({
         }
       }
     },
-    [playSound, router, showTemporaryBookingTitle],
+    [deliverAlert],
   );
   useEffect(() => {
     loadNotificationsRef.current = loadNotifications;
@@ -579,7 +771,7 @@ export function ProviderNotificationCenter({
     [],
   );
 
-  const pollAsVisibleLeader = useCallback(async () => {
+  const pollAsLeader = useCallback(async () => {
     await loadNotifications(true);
     if (
       statusFilterRef.current !== "all" ||
@@ -594,6 +786,11 @@ export function ProviderNotificationCenter({
 
   useEffect(() => {
     function synchronize(message: ProviderNotificationCoordinationMessage) {
+      if (message.type === "alert-delivered") {
+        deliveredAlertIds.current.add(message.notificationId);
+        pendingAlerts.current.delete(message.notificationId);
+        return;
+      }
       if (message.reason === "preferences") {
         void refreshPreferences();
         return;
@@ -631,8 +828,13 @@ export function ProviderNotificationCenter({
     baseTitle.current = getBaseTitle(document.title);
 
     // Every tab hydrates once without alerts. Only the elected leader polls and
-    // is therefore allowed to emit subsequent toast/sound notifications.
+    // is therefore allowed to emit subsequent alerts, even while hidden.
     const initializationId = window.setTimeout(() => {
+      setNativePermission(
+        "Notification" in window
+          ? window.Notification.permission
+          : "unsupported",
+      );
       void refreshPreferences()
         .then((nextPreferences) => {
           if (!nextPreferences) return;
@@ -645,23 +847,40 @@ export function ProviderNotificationCenter({
       void loadNotifications(false);
     }, 0);
     const intervalId = window.setInterval(() => {
-      if (
-        document.visibilityState === "visible" &&
-        (coordinatorRef.current?.isLeader() ?? true)
-      )
-        void pollAsVisibleLeader();
+      if (coordinatorRef.current?.isLeader() ?? true) void pollAsLeader();
     }, POLLING_INTERVAL_MS);
-    const onFocus = () => {
+    const synchronizeVisibleTab = () => {
+      setNativePermission(
+        "Notification" in window
+          ? window.Notification.permission
+          : "unsupported",
+      );
       if (coordinatorRef.current?.isLeader() ?? true) {
-        void pollAsVisibleLeader();
+        void deliverPendingVisibleAlert().finally(() => {
+          void pollAsLeader();
+        });
+        if (
+          statusFilterRef.current !== "all" ||
+          categoryFilterRef.current !== "all"
+        ) {
+          void refreshLoadedNotificationPages({
+            status: statusFilterRef.current,
+            category: categoryFilterRef.current,
+          });
+        }
       }
     };
-    window.addEventListener("focus", onFocus);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") synchronizeVisibleTab();
+    };
+    window.addEventListener("focus", synchronizeVisibleTab);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.clearInterval(intervalId);
       window.clearTimeout(initializationId);
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("focus", synchronizeVisibleTab);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (titleTimer.current) window.clearTimeout(titleTimer.current);
       if (agendaHighlightTimer.current) {
         window.clearTimeout(agendaHighlightTimer.current);
@@ -671,7 +890,9 @@ export function ProviderNotificationCenter({
     };
   }, [
     loadNotifications,
-    pollAsVisibleLeader,
+    deliverPendingVisibleAlert,
+    pollAsLeader,
+    refreshLoadedNotificationPages,
     refreshPreferences,
     soundPromptDismissedKey,
   ]);
@@ -871,13 +1092,19 @@ export function ProviderNotificationCenter({
         preferences,
         preferencesLoaded,
         soundFeedback,
+        soundRuntimeFeedback,
+        nativePermission,
+        nativeFeedback,
+        nativeTestFeedback,
         updatePreference,
         testSound,
+        requestNativePermission,
+        testNativeNotification,
       }}
     >
       {children}
       <p className="sr-only" aria-live="polite">
-        {soundFeedback}
+        {soundRuntimeFeedback ?? soundFeedback ?? nativeTestFeedback ?? nativeFeedback}
       </p>
 
       {agendaHighlightVisible && pathname.startsWith("/app/appointments") ? (
@@ -1351,7 +1578,13 @@ function NotificationPreferenceControls({
     preferences,
     preferencesLoaded,
     soundFeedback,
+    soundRuntimeFeedback,
+    nativePermission,
+    nativeFeedback,
+    nativeTestFeedback,
     testSound,
+    requestNativePermission,
+    testNativeNotification,
     updatePreference,
   } = center;
 
@@ -1413,6 +1646,53 @@ function NotificationPreferenceControls({
             Defina como o painel deve avisar sobre novos agendamentos e
             pendências importantes.
           </p>
+          <div className="mt-4 rounded-xl border border-border bg-background p-3">
+            <p className="text-sm font-semibold">
+              Notificações com a aba em segundo plano
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Autorize o navegador para receber avisos enquanto o Agendaí
+              permanecer aberto em outra aba.
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Permissão do navegador: {nativePermission === "granted"
+                ? "permitida"
+                : nativePermission === "denied"
+                  ? "bloqueada"
+                  : nativePermission === "default"
+                    ? "não ativada"
+                    : "indisponível"}.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+            {nativePermission === "default" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-3"
+                onClick={() => void requestNativePermission()}
+              >
+                <Bell className="mr-2 size-4" /> Ativar no navegador
+              </Button>
+            ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void testNativeNotification()}
+              >
+                <Bell className="mr-2 size-4" /> Testar notificação
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Último teste de notificação: {nativeTestFeedback ?? "ainda não executado"}
+            </p>
+            {nativeFeedback ? (
+              <p className="mt-2 text-xs text-muted-foreground" role="status">
+                {nativeFeedback}
+              </p>
+            ) : null}
+          </div>
           <div className="mt-4 space-y-2">
             {items.map((item) => {
               const disabled =
@@ -1459,7 +1739,16 @@ function NotificationPreferenceControls({
             </Button>
             {soundFeedback ? (
               <p className="text-sm text-muted-foreground" role="status">
-                {soundFeedback}
+                Último teste de som: {soundFeedback}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Último teste de som: ainda não executado.
+              </p>
+            )}
+            {soundRuntimeFeedback ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                {soundRuntimeFeedback}
               </p>
             ) : null}
           </div>

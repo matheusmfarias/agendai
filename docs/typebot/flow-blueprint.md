@@ -1,207 +1,180 @@
-# Typebot Flow Blueprint
+# Blueprint Typebot — MVP do Agendaí
 
-Fluxo conversacional do Typebot para atendimento e agendamento via WhatsApp usando a API do AgendaZap (Phase 06).
+O fluxo atualizado segue:
+
+```text
+estabelecimento → intenção → categoria → serviço → data disponível
+→ turno disponível → horário → perguntas do serviço → telefone da conversa
+→ lookup/confirmar ou nome → resumo → criação
+```
+
+O Typebot não classifica horários: consulta `available-periods` e envia o valor
+recebido no parâmetro `period` do endpoint de slots. Um único turno segue direto
+para horários; dois ou mais exibem a escolha. Datas e turnos usam apenas os labels
+da API, sem contagens. Se não houver telefone de canal, o fallback mostra
+diretamente “Informe seu telefone com DDD.” e abre o input, sem uma escolha
+intermediária.
+
+“Falar com atendente” termina o grafo automático e marca `handoffRequested`; no
+próprio canal WhatsApp, a conversa permanece com o estabelecimento sem apresentar
+outro link. “Encerrar atendimento” finaliza a sessão sem handoff ou criação de
+agendamento. As escolhas “Voltar” usam sentinelas
+internas e blocos de reset que limpam somente serviço, data, turno, horário e
+`appointmentId` dependentes da etapa alterada. Cada etapa oferece no máximo uma
+opção chamada “Voltar”, sempre para a última etapa visualizada. Assim, horários
+voltam ao turno quando ele foi exibido ou diretamente à data quando o turno
+único foi selecionado automaticamente. No resumo, “Voltar” retorna à
+identificação.
+
+Fonte de verdade do fluxo conversacional importável:
+
+- [`agendai-mvp.typebot.json`](./agendai-mvp.typebot.json)
+
+O arquivo usa o schema Typebot `6.1`, não contém URL, slug ou credencial de
+tenant e pode ser importado pelo menu **Import a file** do Typebot.
 
 ## Responsabilidades
 
-### O Typebot faz (camada conversacional)
+O Typebot coleta escolhas e chama a API. O Agendaí continua responsável por:
 
-- Cumprimentar o cliente
-- Coletar nome, telefone, e-mail opcional
-- Listar serviços (texto recebido da API)
-- Apresentar horários (texto recebido da API)
-- Receber escolha numérica do cliente
-- Chamar APIs REST do AgendaZap
-- Exibir confirmação ou mensagem de erro seguro
+- tenant e política de assinatura;
+- serviços ativos;
+- disponibilidade e conflitos;
+- modo `DIRECT` ou `REQUIRES_CONFIRMATION`;
+- criação idempotente do agendamento;
+- mensagens transacionais por WhatsApp via Evolution API.
 
-### O Typebot NÃO faz
+O Typebot não envia `APPOINTMENT_REQUESTED`, `APPOINTMENT_CONFIRMED` ou
+`APPOINTMENT_COMPLETED` e não contém regras alternativas de agenda.
 
-- Calcular disponibilidade sozinho
-- Decidir conflito de agenda
-- Confirmar horário sem chamar API
-- Criar cliente fora do AgendaZap
-- Criar agendamento sem validação do AgendaZap
-- Expor motivo administrativo de bloqueio
-- Expor dados internos (inadimplência, assinatura vencida, stack traces)
+## Fluxo importado
 
-**Toda regra crítica fica no AgendaZap.** O Typebot é apenas a interface conversacional.
+1. `GET /business` identifica o estabelecimento e seu contato.
+2. “Como podemos ajudar?” direciona para agendamento ou handoff terminal.
+3. `GET /categories` carrega categorias com serviços ativos.
+4. `GET /services?categoryId=...` carrega somente a categoria escolhida.
+5. Uma escolha dinâmica mapeia o nome selecionado para o ID retornado.
+6. O bot informa que, no MVP atual, o profissional é definido pelo
+   estabelecimento quando aplicável.
+7. `GET /available-dates?days=14` calcula datas com slots reais e retorna no
+   máximo três opções.
+8. Uma escolha dinâmica mapeia o label para o `date` retornado pela API.
+9. `GET /available-periods` seleciona automaticamente um turno único ou mostra
+   a escolha quando existem dois ou mais.
+10. `GET /slots?...&period=...` usa exatamente data e turno selecionados.
+11. O telefone da conversa inicia lookup; o Preview possui fallback manual.
+12. `POST /customers/identify` confirma ou cria/reutiliza pelo nome.
+13. O bot mostra serviço, data, horário e cliente para confirmação.
+14. Antes do POST, verifica se `appointmentId` já existe na conversa.
+15. `POST /appointments` cria ou devolve o agendamento idempotente.
+16. O status define a mensagem final.
 
----
+## Mensagens finais
 
-## Fluxo principal — caminho feliz
+Para `CONFIRMED` (`DIRECT`):
 
-```
-1. INÍCIO DA CONVERSA
-   Cliente envia primeira mensagem no WhatsApp.
-   Typebot chama GET /api/typebot/{tenantSlug}/business.
-   → Exibe mensagem de abertura com nome do prestador.
+> Seu agendamento foi confirmado. Você também receberá os detalhes pelo WhatsApp.
 
-2. MENU INICIAL
-   Typebot exibe opções:
-   "1 - Agendar um serviço"
-   "2 - Ver serviços disponíveis"
-   "3 - Falar com atendimento"
-   Cliente digita "1".
+Para `REQUESTED` (`REQUIRES_CONFIRMATION`):
 
-3. CAPTURAR NOME
-   Typebot pergunta: "Qual o seu nome?"
-   Cliente responde: "João Silva".
-   Typebot armazena em customerName.
+> Recebemos sua solicitação. O estabelecimento ainda precisa confirmar o horário e você será avisado pelo WhatsApp.
 
-4. CAPTURAR TELEFONE
-   Opção A: Typebot captura número do WhatsApp automaticamente.
-   Opção B: Se o canal não fornecer, Typebot pergunta:
-           "Qual o seu telefone com DDD?"
-   Cliente responde: "55999999999".
-   Typebot armazena em customerPhone.
+Outros status usam uma mensagem neutra. O fluxo não mostra `code`, `message`,
+status HTTP ou detalhes técnicos ao cliente.
 
-5. IDENTIFICAR CLIENTE
-   Typebot chama POST /api/typebot/{tenantSlug}/customers/identify.
-   Body: { phone, name, email (opcional) }.
-   → Salva customerId e sessionId.
+## Serviços e horários dinâmicos
 
-6. LISTAR SERVIÇOS
-   Typebot chama GET /api/typebot/{tenantSlug}/services.
-   → Exibe servicesText como lista numerada.
-   "Escolha um serviço digitando o número:"
+As respostas HTTP são transformadas em listas paralelas:
 
-7. CLIENTE ESCOLHE SERVIÇO
-   Cliente digita "1".
-   Typebot mapeia: selectedServiceId = services[0].id.
+- `serviceNames` ↔ `serviceIds` ↔ `serviceBookingModes`;
+- `availableDateLabels` ↔ `availableDateValues`;
+- `slotLabels` ↔ `slotStartsAt`.
 
-8. DETALHE DO SERVIÇO
-   Typebot chama GET /api/typebot/{tenantSlug}/services/{selectedServiceId}.
-   → Obtém dados do serviço (duração, preço, bookingMode) e campos personalizados ativos.
-   → Salva selectedServiceDetailsJson, customFieldsJson, customFieldsText.
-   → Exibe resumo do serviço escolhido ao cliente.
+O bloco **Map item with same index** do Typebot resolve o ID correspondente à
+opção selecionada. Nenhum UUID é digitado pelo cliente ou mantido fixo no bot.
 
-9. BUSCAR HORÁRIOS
-   Typebot chama GET /api/typebot/{tenantSlug}/services/{selectedServiceId}/slots?days=7.
-   → Exibe slotsText como lista numerada.
-   "Estes são os próximos horários disponíveis. Digite o número desejado."
+## Datas e horários
 
-10. CLIENTE ESCOLHE HORÁRIO
-    Cliente digita "1".
-    Typebot mapeia: selectedSlotStartsAt = slots[0].startsAt.
+Não existe mais `date input`. O cliente só vê datas presentes em `dates`, e o
+Typebot usa o valor `date` sem reconstrução ou correção de timezone.
 
-11. CAMPOS PERSONALIZADOS (se customFields não estiver vazio)
-    Typebot usa customFieldsText para perguntar os campos.
-    Cliente responde cada campo, um por vez.
-    Typebot monta array customValues com customFieldId e value de cada resposta.
+Cada consulta mostra no máximo três datas. Se `nextStartDate` existir, o
+backend adiciona a continuação lógica usada pela opção **Ver mais datas**. Uma
+janela vazia pode avançar para o próximo período; no fim da janela máxima, o bot
+oferece apenas “Voltar” para o serviço.
 
-12. CONFIRMAR RESUMO
-    Typebot exibe resumo:
-    "Confirmar agendamento?
-     Serviço: Troca de óleo
-     Data/hora: 29/06/2026 14:00
-     Nome: João Silva
-     {{#if customValues}}Placa: ABC-1234{{/if}}
-     
-     Digite 1 para confirmar ou 2 para cancelar."
+Se `/slots` não retornar HTTP 200 com ao menos um item, o bot não mostra o erro
+da API. A opção “Voltar” retorna ao turno, quando ele foi visualizado, ou à data
+quando o turno único foi pulado. Depois de uma disputa de horário na confirmação,
+o fluxo permite tentar novamente ou voltar ao resumo.
 
-13. CRIAR AGENDAMENTO
-    Cliente digita "1".
-    Typebot chama POST /api/typebot/{tenantSlug}/appointments.
-    Body: { sessionId, customerId, serviceId, startsAt, customValues, customerNotes }.
-    → Salva appointmentId, appointmentStatus, appointmentMessage.
+## Idempotência
 
-14. EXIBIR CONFIRMAÇÃO
-    Typebot consulta GET /api/typebot/{tenantSlug}/appointments/{appointmentId}
-         para montar mensagem final com dados completos.
-    Exibe appointmentMessage conforme status (CONFIRMED/REQUESTED/WAITING_INFO).
-```
+Existem duas camadas:
 
----
+1. o fluxo não executa o POST novamente quando `appointmentId` já está definido;
+2. a API usa a sessão e `lastAppointmentId`, com correspondência de tenant,
+   cliente, serviço e horário, para devolver o agendamento existente.
 
-## Fluxo alternativo — só consultar serviços
+Assim, repetir a confirmação ou repetir a chamada após perda da resposta não
+cria outro agendamento nem outra outbox.
 
-```
-1. Cliente digita "2 - Ver serviços disponíveis" no menu inicial.
-2. Typebot chama GET /api/typebot/{tenantSlug}/services.
-3. Exibe servicesText.
-4. Pergunta: "Digite o número do serviço para ver horários ou 0 para voltar."
-5. Se cliente digitar número → vai para passo 8 do fluxo principal.
-6. Se digitar 0 → volta ao menu inicial.
-```
+## Profissional
 
----
+O modelo e a API atuais não expõem profissionais e `Appointment` não possui
+`professionalId`. Por isso, o blueprint funcional do MVP sempre segue pelo
+caminho “profissional definido pelo estabelecimento”.
 
-## Fluxo alternativo — falar com atendimento
+Não adicione uma lista estática de profissionais ao Typebot: ela não seria
+validada nem persistida. Quando o domínio ganhar essa relação, a extensão correta
+será uma API tenant-scoped e o envio do ID selecionado ao serviço compartilhado.
 
-```
-1. Cliente digita "3 - Falar com atendimento" no menu inicial.
-2. Typebot exibe:
-   "Você pode entrar em contato diretamente:
-    📞 {tenant.whatsapp}
-    📍 {tenant.city}/{tenant.state}"
-3. Encerra o fluxo automatizado.
-```
+## Campos personalizados
 
----
+Depois do horário, o blueprint consulta `/custom-fields`. Sem campos, segue para
+identificação. Com campos, percorre a lista por índice e apresenta uma pergunta
+por vez. `TEXT`, `TEXTAREA`, `NUMBER`, `DATE`, `BOOLEAN` e `SELECT` usam os inputs
+correspondentes do Typebot. Campos opcionais podem ser pulados; obrigatórios não
+oferecem essa opção.
 
-## Diagrama de sequência
+As respostas são acumuladas no contrato `{ customFieldId, value }` e exibidas
+no resumo somente quando preenchidas. Antes do POST, o blueprint interpreta a
+lista acumulada, monta o corpo completo com `JSON.stringify` uma única vez e
+armazena esse corpo em `appointmentRequestBody`. O bloco HTTP usa somente
+`{{appointmentRequestBody}}` como custom body; assim, o Typebot interpreta o
+corpo completo e `customValues` chega como array JSON real, sem reinserir uma
+string JSON dentro de outro JSON. “Voltar” retorna à pergunta anterior ou ao
+horário na primeira pergunta. Trocar o serviço limpa lista, índice, respostas e
+resumo. O booking core revalida tenant, serviço, campo, obrigatoriedade, tipo e
+opções antes de persistir.
 
-```
-Cliente          Typebot                 AgendaZap API
-  │                 │                        │
-  ├─ "oi" ─────────►│                        │
-  │                 ├─ GET /business ────────►│
-  │                 │◄─── { tenant } ────────┤
-  │◄─ "Olá! Bem-vindo à Mecânica Silva." ───┤
-  │                 │                        │
-  │◄─ menu inicial ─┤                        │
-  ├─ "1" ──────────►│                        │
-  │                 │                        │
-  │◄─ "Qual seu nome?"                       │
-  ├─ "João" ───────►│                        │
-  │                 │                        │
-  │◄─ "Qual seu telefone?"                   │
-  ├─ "55999999999"─►│                        │
-  │                 ├─ POST /identify ───────►│
-  │                 │◄── { customer, session }│
-  │                 │                        │
-  │                 ├─ GET /services ────────►│
-  │                 │◄── { services, text } ──┤
-  │◄─ "1 - Troca de óleo | 30 min" ─────────┤
-  │                 │                        │
-  ├─ "1" ──────────►│                        │
-  │                 ├─ GET /slots ───────────►│
-  │                 │◄── { slots, text } ─────┤
-  │◄─ "1 - 29/06 14:00" ──────────────────────┤
-  │                 │                        │
-  ├─ "1" ──────────►│                        │
-  │                 │                        │
-  │◄─ "Confirmar?" ─┤                        │
-  ├─ "1" ──────────►│                        │
-  │                 ├─ POST /appointments ───►│
-  │                 │◄── { appointment } ─────┤
-  │                 │                        │
-  │                 ├─ GET /appointments/{id}─►│
-  │                 │◄── { appointment } ─────┤
-  │◄─ "Confirmado! 29/06 às 14:00." ────────┤
-```
+## Erros seguros
 
----
+| Situação | Comportamento do fluxo |
+|---|---|
+| Tenant, credencial ou rede indisponível | Mensagem genérica e encerramento |
+| Nenhum serviço | Orienta contato com o estabelecimento |
+| Período sem datas, mas com continuação | Oferece “Ver mais datas” |
+| Fim da janela sem datas | “Voltar” retorna ao serviço |
+| Horário perdido após escolha da data | “Voltar” retorna ao turno exibido ou à data |
+| Nome ou telefone inválido | Volta à coleta dos dados |
+| Horário ocupado durante a confirmação | Tenta novamente ou volta ao resumo |
+| Status inesperado | Mensagem final neutra |
 
-## Booking modes e resultado
+Os detalhes ficam disponíveis somente nos logs HTTP do editor Typebot.
 
-O status final do agendamento depende do `bookingMode` do serviço:
+## Fora do escopo
 
-| Booking mode | Status | Significado |
-|---|---|---|
-| `DIRECT` | `CONFIRMED` | Horário confirmado automaticamente |
-| `REQUIRES_CONFIRMATION` | `REQUESTED` | Aguarda confirmação do prestador |
-| `INFORMATIONAL` | `WAITING_INFO` | Prestador entrará em contato |
-
-O Typebot deve exibir a mensagem apropriada conforme o `message` retornado pela API no campo `appointmentMessage`.
-
----
+- cancelamento e reagendamento;
+- pagamento;
+- IA generativa;
+- atendimento humano automatizado;
+- edição cadastral;
+- templates ou mensagens transacionais no Typebot.
 
 ## Referências
 
-- [Variáveis do Typebot](./variables.md)
-- [Chamadas HTTP](./http-requests.md)
-- [Mensagens ao cliente](./messages.md)
-- [Tratamento de erros](./error-handling.md)
-- [Guia de teste manual](./testing-guide.md)
-- [Documentação da API Typebot](../technical/typebot-api.md)
+- [Importação, configuração e publicação](./real-setup-guide.md)
+- [Variáveis](./variables.md)
+- [Contratos da API](../technical/typebot-api.md)
+- [Simulador](./simulator.md)

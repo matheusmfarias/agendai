@@ -6,16 +6,27 @@ import {
   buildServicesText,
   buildSlotsText,
   BusinessError,
+  confirmTypebotCustomer,
+  createTypebotCustomer,
   createTypebotAppointment,
   getBusinessData,
+  getTypebotCategories,
+  getTypebotAvailableDates,
+  getTypebotAvailablePeriods,
   getTypebotAppointment,
+  getTypebotCustomFields,
   getTypebotServiceDetail,
   getTypebotServices,
   getTypebotSlots,
   getTypebotTenant,
-  identifyCustomer,
+  lookupTypebotCustomer,
   validateTypebotTenant,
   type TypebotAppointmentResult,
+  type TypebotAvailableDateItem,
+  type TypebotAvailablePeriodItem,
+  type TypebotAvailabilityPeriod,
+  type TypebotCategoryItem,
+  type TypebotCustomField,
   type TypebotServiceDetail,
 } from "@/features/typebot/typebot-service";
 import { canCreateTypebotAppointmentForTenant } from "@/features/booking-core/tenant-policy";
@@ -101,6 +112,7 @@ export type SimulatorBusinessResult = {
     city: string;
     state: string;
     whatsapp: string;
+    whatsappUrl: string | null;
   };
   error?: { code: string; message: string };
   log: StepLog;
@@ -152,17 +164,19 @@ export async function fetchBusiness(
 
 export type SimulatorIdentifyResult = {
   ok: boolean;
+  lookup?: {
+    status: "FOUND" | "NOT_FOUND" | "AMBIGUOUS";
+    customerName: string | null;
+  };
   customer?: { id: string; name: string; phone: string; email: string | null };
   session?: { id: string; status: string };
   error?: { code: string; message: string };
   log: StepLog;
 };
 
-export async function identifySimulatorCustomer(
+export async function lookupSimulatorCustomer(
   tenantSlug: string,
   phone: string,
-  name: string,
-  email?: string,
 ): Promise<SimulatorIdentifyResult> {
   await requireSuperAdmin();
 
@@ -187,15 +201,13 @@ export async function identifySimulatorCustomer(
   }
 
   try {
-    const result = await identifyCustomer(tenant.id, { phone, name, email });
+    const result = await lookupTypebotCustomer(tenant.id, phone);
 
     return {
       ok: true,
-      customer: {
-        id: result.customer.id,
-        name: result.customer.name,
-        phone: result.customer.phone,
-        email: result.customer.email,
+      lookup: {
+        status: result.status,
+        customerName: result.customer?.name ?? null,
       },
       session: {
         id: result.session.id,
@@ -207,7 +219,7 @@ export async function identifySimulatorCustomer(
         request: `POST /api/typebot/${tenantSlug}/customers/identify`,
         response: JSON.stringify({
           ok: true,
-          customer: { id: result.customer.id, name: result.customer.name },
+          lookup: { status: result.status },
           session: { id: result.session.id },
         }),
         timestamp: now,
@@ -231,8 +243,126 @@ export async function identifySimulatorCustomer(
   }
 }
 
+export async function resolveSimulatorCustomer(
+  tenantSlug: string,
+  input:
+    | { action: "CONFIRM"; sessionId: string }
+    | {
+        action: "CREATE";
+        sessionId: string;
+        name: string;
+        email?: string;
+        rejectedExisting?: boolean;
+      },
+): Promise<SimulatorIdentifyResult> {
+  await requireSuperAdmin();
+  const now = new Date().toISOString();
+  const tenant = await getTypebotTenant(tenantSlug);
+  if (!tenant || !validateTypebotTenant(tenant)) {
+    return {
+      ok: false,
+      error: {
+        code: "BUSINESS_UNAVAILABLE",
+        message: "Este atendimento está temporariamente indisponível.",
+      },
+      log: {
+        step: "identify",
+        status: "error",
+        request: `POST /api/typebot/${tenantSlug}/customers/identify`,
+        response: JSON.stringify({ code: "BUSINESS_UNAVAILABLE" }),
+        timestamp: now,
+      },
+    };
+  }
+
+  try {
+    const result = input.action === "CONFIRM"
+      ? await confirmTypebotCustomer(tenant.id, input.sessionId)
+      : await createTypebotCustomer(tenant.id, input);
+    return {
+      ok: true,
+      customer: result.customer,
+      session: { id: result.session.id, status: result.session.status },
+      log: {
+        step: "identify",
+        status: "ok",
+        request: `POST /api/typebot/${tenantSlug}/customers/identify`,
+        response: JSON.stringify({
+          ok: true,
+          action: input.action,
+          customer: { id: result.customer.id },
+        }),
+        timestamp: now,
+      },
+    };
+  } catch (error) {
+    if (error instanceof BusinessError) {
+      return {
+        ok: false,
+        error: { code: error.code, message: error.message },
+        log: {
+          step: "identify",
+          status: "error",
+          request: `POST /api/typebot/${tenantSlug}/customers/identify`,
+          response: JSON.stringify({ code: error.code }),
+          timestamp: now,
+        },
+      };
+    }
+    throw error;
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Step 3 — Services
+// Step 3 — Categories
+// ---------------------------------------------------------------------------
+
+export type SimulatorCategoriesResult = {
+  ok: boolean;
+  categories?: TypebotCategoryItem[];
+  error?: { code: string; message: string };
+  log: StepLog;
+};
+
+export async function fetchCategories(
+  tenantSlug: string,
+): Promise<SimulatorCategoriesResult> {
+  await requireSuperAdmin();
+  const now = new Date().toISOString();
+  const tenant = await getTypebotTenant(tenantSlug);
+  if (!tenant || !validateTypebotTenant(tenant)) {
+    return {
+      ok: false,
+      error: {
+        code: "BUSINESS_UNAVAILABLE",
+        message: "Este atendimento está temporariamente indisponível.",
+      },
+      log: {
+        step: "categories",
+        status: "error",
+        request: `GET /api/typebot/${tenantSlug}/categories`,
+        response: JSON.stringify({ code: "BUSINESS_UNAVAILABLE" }),
+        timestamp: now,
+      },
+    };
+  }
+
+  const categories = await getTypebotCategories(tenant.id);
+  return {
+    ok: true,
+    categories,
+    log: {
+      step: "categories",
+      status: "ok",
+      request: `GET /api/typebot/${tenantSlug}/categories`,
+      response: JSON.stringify({ ok: true, count: categories.length }),
+      timestamp: now,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Step 4 — Services
 // ---------------------------------------------------------------------------
 
 export type SimulatorServicesResult = {
@@ -240,6 +370,7 @@ export type SimulatorServicesResult = {
   services?: {
     number: number;
     id: string;
+    categoryId: string;
     category: string;
     name: string;
     description: string | null;
@@ -254,6 +385,7 @@ export type SimulatorServicesResult = {
 
 export async function fetchServices(
   tenantSlug: string,
+  categoryId: string,
 ): Promise<SimulatorServicesResult> {
   await requireSuperAdmin();
 
@@ -270,14 +402,14 @@ export async function fetchServices(
       log: {
         step: "services",
         status: "error",
-        request: `GET /api/typebot/${tenantSlug}/services`,
+        request: `GET /api/typebot/${tenantSlug}/services?categoryId=${categoryId}`,
         response: JSON.stringify({ code: "BUSINESS_UNAVAILABLE" }),
         timestamp: now,
       },
     };
   }
 
-  const services = await getTypebotServices(tenant.id);
+  const services = await getTypebotServices(tenant.id, categoryId);
   const text = buildServicesText(services);
 
   return {
@@ -287,7 +419,7 @@ export async function fetchServices(
     log: {
       step: "services",
       status: "ok",
-      request: `GET /api/typebot/${tenantSlug}/services`,
+      request: `GET /api/typebot/${tenantSlug}/services?categoryId=${categoryId}`,
       response: JSON.stringify({ ok: true, count: services.length }),
       timestamp: now,
     },
@@ -368,8 +500,200 @@ export async function fetchServiceDetail(
   };
 }
 
+export async function fetchCustomFields(
+  tenantSlug: string,
+  serviceId: string,
+): Promise<{
+  ok: boolean;
+  fields?: TypebotCustomField[];
+  error?: { code: string; message: string };
+  log: StepLog;
+}> {
+  await requireSuperAdmin();
+  const now = new Date().toISOString();
+  const tenant = await getTypebotTenant(tenantSlug);
+  const fields = tenant && validateTypebotTenant(tenant)
+    ? await getTypebotCustomFields(tenant.id, serviceId)
+    : null;
+
+  if (!fields) {
+    return {
+      ok: false,
+      error: {
+        code: tenant ? "SERVICE_NOT_FOUND" : "BUSINESS_UNAVAILABLE",
+        message: "Não foi possível carregar as perguntas deste serviço.",
+      },
+      log: {
+        step: "custom-fields",
+        status: "error",
+        request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/custom-fields`,
+        response: JSON.stringify({ ok: false }),
+        timestamp: now,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    fields,
+    log: {
+      step: "custom-fields",
+      status: "ok",
+      request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/custom-fields`,
+      response: JSON.stringify({ ok: true, fields: fields.length }),
+      timestamp: now,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
-// Step 5 — Slots
+// Step 5 — Available dates
+// ---------------------------------------------------------------------------
+
+export type SimulatorAvailableDatesResult = {
+  ok: boolean;
+  dates?: TypebotAvailableDateItem[];
+  nextStartDate?: string | null;
+  error?: { code: string; message: string };
+  log: StepLog;
+};
+
+export async function fetchAvailableDates(
+  tenantSlug: string,
+  serviceId: string,
+  startDate?: string,
+): Promise<SimulatorAvailableDatesResult> {
+  await requireSuperAdmin();
+
+  const now = new Date().toISOString();
+  const request = `GET /api/typebot/${tenantSlug}/services/${serviceId}/available-dates${startDate ? `?startDate=${startDate}&days=14` : "?days=14"}`;
+  const tenant = await getTypebotTenant(tenantSlug);
+  if (!tenant || !validateTypebotTenant(tenant)) {
+    return {
+      ok: false,
+      error: {
+        code: "BUSINESS_UNAVAILABLE",
+        message: "Este atendimento está temporariamente indisponível.",
+      },
+      log: {
+        step: "dates",
+        status: "error",
+        request,
+        response: JSON.stringify({ code: "BUSINESS_UNAVAILABLE" }),
+        timestamp: now,
+      },
+    };
+  }
+
+  const result = await getTypebotAvailableDates(tenant.id, serviceId, {
+    startDate,
+    days: 14,
+  });
+  if (!result.service) {
+    return {
+      ok: false,
+      error: {
+        code: "SERVICE_NOT_FOUND",
+        message: "Esse serviço não está disponível no momento.",
+      },
+      log: {
+        step: "dates",
+        status: "error",
+        request,
+        response: JSON.stringify({ code: "SERVICE_NOT_FOUND" }),
+        timestamp: now,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    dates: result.dates,
+    nextStartDate: result.nextStartDate,
+    log: {
+      step: "dates",
+      status: "ok",
+      request,
+      response: JSON.stringify({
+        ok: true,
+        dates: result.dates.length,
+        nextStartDate: result.nextStartDate,
+      }),
+      timestamp: now,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Step 6 — Available periods
+// ---------------------------------------------------------------------------
+
+export type SimulatorAvailablePeriodsResult = {
+  ok: boolean;
+  periods?: TypebotAvailablePeriodItem[];
+  error?: { code: string; message: string };
+  log: StepLog;
+};
+
+export async function fetchAvailablePeriods(
+  tenantSlug: string,
+  serviceId: string,
+  date: string,
+): Promise<SimulatorAvailablePeriodsResult> {
+  await requireSuperAdmin();
+  const now = new Date().toISOString();
+  const request = `GET /api/typebot/${tenantSlug}/services/${serviceId}/available-periods?date=${date}`;
+  const tenant = await getTypebotTenant(tenantSlug);
+  if (!tenant || !validateTypebotTenant(tenant)) {
+    return {
+      ok: false,
+      error: {
+        code: "BUSINESS_UNAVAILABLE",
+        message: "Este atendimento está temporariamente indisponível.",
+      },
+      log: {
+        step: "periods",
+        status: "error",
+        request,
+        response: JSON.stringify({ code: "BUSINESS_UNAVAILABLE" }),
+        timestamp: now,
+      },
+    };
+  }
+
+  const result = await getTypebotAvailablePeriods(tenant.id, serviceId, date);
+  if (!result.service) {
+    return {
+      ok: false,
+      error: {
+        code: "SERVICE_NOT_FOUND",
+        message: "Esse serviço não está disponível no momento.",
+      },
+      log: {
+        step: "periods",
+        status: "error",
+        request,
+        response: JSON.stringify({ code: "SERVICE_NOT_FOUND" }),
+        timestamp: now,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    periods: result.periods,
+    log: {
+      step: "periods",
+      status: "ok",
+      request,
+      response: JSON.stringify({ ok: true, count: result.periods.length }),
+      timestamp: now,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Step 7 — Slots
 // ---------------------------------------------------------------------------
 
 export type SimulatorSlotsResult = {
@@ -388,7 +712,8 @@ export type SimulatorSlotsResult = {
 export async function fetchSlots(
   tenantSlug: string,
   serviceId: string,
-  days?: number,
+  date: string,
+  period: TypebotAvailabilityPeriod,
 ): Promise<SimulatorSlotsResult> {
   await requireSuperAdmin();
 
@@ -405,7 +730,7 @@ export async function fetchSlots(
       log: {
         step: "slots",
         status: "error",
-        request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/slots`,
+        request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/slots?date=${date}&days=1&period=${period}`,
         response: JSON.stringify({ code: "BUSINESS_UNAVAILABLE" }),
         timestamp: now,
       },
@@ -413,7 +738,9 @@ export async function fetchSlots(
   }
 
   const { service, slots } = await getTypebotSlots(tenant.id, serviceId, {
-    days,
+    date,
+    days: 1,
+    period,
   });
 
   if (!service) {
@@ -426,7 +753,7 @@ export async function fetchSlots(
       log: {
         step: "slots",
         status: "error",
-        request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/slots`,
+        request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/slots?date=${date}&days=1&period=${period}`,
         response: JSON.stringify({ code: "SERVICE_NOT_FOUND" }),
         timestamp: now,
       },
@@ -443,7 +770,7 @@ export async function fetchSlots(
       log: {
         step: "slots",
         status: "error",
-        request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/slots`,
+        request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/slots?date=${date}&days=1&period=${period}`,
         response: JSON.stringify({ code: "NO_SLOTS_AVAILABLE" }),
         timestamp: now,
       },
@@ -457,7 +784,7 @@ export async function fetchSlots(
     log: {
       step: "slots",
       status: "ok",
-      request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/slots`,
+      request: `GET /api/typebot/${tenantSlug}/services/${serviceId}/slots?date=${date}&days=1&period=${period}`,
       response: JSON.stringify({ ok: true, count: slots.length }),
       timestamp: now,
     },

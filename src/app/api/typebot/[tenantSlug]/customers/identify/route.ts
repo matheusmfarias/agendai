@@ -1,15 +1,59 @@
-import { z } from "zod";
+import { createHash } from "node:crypto";
 
-import { typebotError, typebotOk, TYPEFBOT_ERROR_CODES, assertNoMojibake } from "@/features/typebot/typebot-responses";
-import { BusinessError, getTypebotTenant, identifyCustomer, validateTypebotTenant } from "@/features/typebot/typebot-service";
-import { guardTypebotEndpoint } from "@/features/typebot/typebot-rate-limit";
 import { createAuditLog } from "@/features/audit/audit-log-service";
+import {
+  normalizeBrazilianCustomerPhone,
+  phoneDigits,
+} from "@/features/booking-core/phone";
+import { typebotCustomerIdentificationSchema } from "@/features/typebot/typebot-customer-schemas";
+import { guardTypebotEndpoint } from "@/features/typebot/typebot-rate-limit";
+import {
+  assertNoMojibake,
+  typebotError,
+  typebotOk,
+  TYPEFBOT_ERROR_CODES,
+} from "@/features/typebot/typebot-responses";
+import {
+  BusinessError,
+  confirmTypebotCustomer,
+  createTypebotCustomer,
+  getTypebotTenant,
+  lookupTypebotCustomer,
+  validateTypebotTenant,
+} from "@/features/typebot/typebot-service";
 
-const bodySchema = z.object({
-  phone: z.string().trim().min(8, "Informe o telefone."),
-  name: z.string().trim().min(2, "Informe o nome.").max(200),
-  email: z.string().trim().email("E-mail inválido.").optional().or(z.literal("")),
-});
+type LookupDiagnostic = {
+  httpStatus: number;
+  code: string | null;
+  lookupPresent: boolean;
+  lookupStatus: "FOUND" | "NOT_FOUND" | "AMBIGUOUS" | null;
+  sessionIdPresent: boolean;
+  phone: { format: "BR_NATIONAL" | "INVALID"; digitCount: number };
+  tenant: string;
+  expectedBlueprintBranch:
+    | "i_customer_found"
+    | "i_customer_new_required"
+    | "e_identify_fail";
+};
+
+function anonymizeTenantId(tenantId: string) {
+  return createHash("sha256").update(tenantId).digest("hex").slice(0, 12);
+}
+
+function phoneDiagnostic(phoneInput: string) {
+  const normalized = normalizeBrazilianCustomerPhone(phoneInput);
+  return {
+    format: normalized ? "BR_NATIONAL" : "INVALID",
+    digitCount: normalized?.length ?? phoneDigits(phoneInput).length,
+  } as const;
+}
+
+function logLookupDiagnostic(diagnostic: LookupDiagnostic) {
+  console.info(
+    "Typebot customer lookup diagnostic",
+    JSON.stringify(diagnostic),
+  );
+}
 
 export async function POST(
   request: Request,
@@ -20,7 +64,6 @@ export async function POST(
   if (!guard.ok) return guard.response;
 
   const tenant = await getTypebotTenant(tenantSlug);
-
   if (!tenant || !validateTypebotTenant(tenant)) {
     return typebotError(
       TYPEFBOT_ERROR_CODES.BUSINESS_UNAVAILABLE,
@@ -32,18 +75,40 @@ export async function POST(
   try {
     body = await request.json();
   } catch {
-    return typebotError(TYPEFBOT_ERROR_CODES.VALIDATION_ERROR, "Payload inválido.");
+    return typebotError(
+      TYPEFBOT_ERROR_CODES.VALIDATION_ERROR,
+      "Payload inválido.",
+    );
   }
 
-  const parsed = bodySchema.safeParse(body);
+  const parsed = typebotCustomerIdentificationSchema.safeParse(body);
   if (!parsed.success) {
-    return typebotError(TYPEFBOT_ERROR_CODES.VALIDATION_ERROR, "Revise os campos informados.");
+    if (
+      body &&
+      typeof body === "object" &&
+      !Array.isArray(body) &&
+      (body as Record<string, unknown>).action === "LOOKUP"
+    ) {
+      const phone = (body as Record<string, unknown>).phone;
+      logLookupDiagnostic({
+        httpStatus: 400,
+        code: TYPEFBOT_ERROR_CODES.VALIDATION_ERROR,
+        lookupPresent: false,
+        lookupStatus: null,
+        sessionIdPresent: false,
+        phone: phoneDiagnostic(typeof phone === "string" ? phone : ""),
+        tenant: anonymizeTenantId(tenant.id),
+        expectedBlueprintBranch: "e_identify_fail",
+      });
+    }
+    return typebotError(
+      TYPEFBOT_ERROR_CODES.VALIDATION_ERROR,
+      "Revise os campos informados.",
+    );
   }
-
-  // Defensive: reject mojibake from wrong client encoding (e.g. PowerShell defaulting to Windows-1252)
   const badField = assertNoMojibake({
-    name: parsed.data.name,
-    email: parsed.data.email ?? null,
+    name: "name" in parsed.data ? parsed.data.name : null,
+    email: "email" in parsed.data ? parsed.data.email : null,
   });
   if (badField) {
     return typebotError(
@@ -53,16 +118,49 @@ export async function POST(
   }
 
   try {
-    const { customer, session } = await identifyCustomer(
-      tenant.id,
-      parsed.data,
-    );
+    if (parsed.data.action === "LOOKUP") {
+      const result = await lookupTypebotCustomer(tenant.id, parsed.data.phone);
+      logLookupDiagnostic({
+        httpStatus: 200,
+        code: null,
+        lookupPresent: true,
+        lookupStatus: result.status,
+        sessionIdPresent: Boolean(result.session.id),
+        phone: phoneDiagnostic(parsed.data.phone),
+        tenant: anonymizeTenantId(tenant.id),
+        expectedBlueprintBranch: result.status === "FOUND"
+          ? "i_customer_found"
+          : "i_customer_new_required",
+      });
+      const response = {
+        lookup: {
+          status: result.status,
+          customerName: result.customer?.name ?? null,
+          requiresConfirmation: result.status === "FOUND",
+          requiresName: result.status !== "FOUND",
+        },
+        session: {
+          id: result.session.id,
+          status: String(result.session.status),
+        },
+      };
+      return typebotOk(response);
+    }
+
+    const { customer, session } = parsed.data.action === "CONFIRM"
+      ? await confirmTypebotCustomer(tenant.id, parsed.data.sessionId)
+      : await createTypebotCustomer(tenant.id, {
+          sessionId: parsed.data.sessionId,
+          name: parsed.data.name,
+          email: parsed.data.email || undefined,
+          rejectedExisting: parsed.data.rejectedExisting,
+        });
 
     await createAuditLog({
       tenantId: tenant.id,
       actorType: "TYPEBOT",
       eventType: "TYPEBOT_CUSTOMER_IDENTIFIED",
-      description: `Cliente identificado via Typebot: ${customer.name}.`,
+      description: `Cliente identificado via Typebot (${parsed.data.action.toLowerCase()}).`,
       metadata: {
         tenantId: tenant.id,
         customerId: customer.id,
@@ -77,12 +175,24 @@ export async function POST(
         phone: customer.phone,
         email: customer.email,
       },
-      session: {
-        id: session.id,
-        status: String(session.status),
-      },
+      session: { id: session.id, status: String(session.status) },
     });
   } catch (error) {
+    if (parsed.data.action === "LOOKUP") {
+      const code = error instanceof BusinessError
+        ? error.code
+        : TYPEFBOT_ERROR_CODES.INTERNAL_ERROR;
+      logLookupDiagnostic({
+        httpStatus: error instanceof BusinessError ? 400 : 500,
+        code,
+        lookupPresent: false,
+        lookupStatus: null,
+        sessionIdPresent: false,
+        phone: phoneDiagnostic(parsed.data.phone),
+        tenant: anonymizeTenantId(tenant.id),
+        expectedBlueprintBranch: "e_identify_fail",
+      });
+    }
     if (error instanceof BusinessError) {
       return typebotError(error.code, error.message);
     }

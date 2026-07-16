@@ -1,5 +1,10 @@
 # Passo a Passo dos Blocos — Typebot Real
 
+> **Documento histórico.** O fluxo importável do MVP substitui esta montagem
+> manual. Use [`agendai-mvp.typebot.json`](./agendai-mvp.typebot.json) e o
+> [guia de importação](./real-setup-guide.md). Não copie URLs, credenciais ou
+> mensagens deste roteiro antigo.
+
 Roteiro de montagem bloco a bloco no editor do Typebot, na ordem exata em que
 devem aparecer no fluxo conversacional. Este documento complementa o
 [flow-blueprint.md](./flow-blueprint.md) com foco na montagem prática.
@@ -14,7 +19,7 @@ Use grupos (folders) no Typebot para organizar:
 ```
 📁 Início
    ├── Start
-   ├── Set variables (apiBaseUrl, tenantSlug, typebotApiKey)
+   ├── Variáveis de sessão injetadas pelo Agendaí no startChat
    └── HTTP - Business
 📁 Boas-vindas
    ├── Message - Abertura
@@ -76,9 +81,10 @@ Tipo: **Set variable**
 Definir as três variáveis fixas:
 
 ```
-apiBaseUrl    = "https://agenda.seudominio.com"   (sem / no final)
-tenantSlug    = "mecanica-silva"                  (slug do prestador)
-typebotApiKey = "sk-..."                          (TYPEBOT_API_KEY do AgendaZap)
+apiBaseUrl    = injetada pelo Agendaí a partir de AGENDAI_PUBLIC_URL
+tenantSlug    = injetada a partir do tenant resolvido pela instância Evolution
+typebotApiKey = credencial ativa cifrada do mesmo tenant
+phone         = telefone normalizado do remetente
 ```
 
 ---

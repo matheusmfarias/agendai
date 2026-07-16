@@ -1,5 +1,15 @@
-import { typebotError, typebotOk, TYPEFBOT_ERROR_CODES } from "@/features/typebot/typebot-responses";
-import { buildSlotsText, getTypebotSlots, getTypebotTenant, validateTypebotTenant } from "@/features/typebot/typebot-service";
+import { typebotSlotsQuerySchema } from "@/features/typebot/typebot-availability-schemas";
+import {
+  typebotError,
+  typebotOk,
+  TYPEFBOT_ERROR_CODES,
+} from "@/features/typebot/typebot-responses";
+import {
+  buildSlotsText,
+  getTypebotSlots,
+  getTypebotTenant,
+  validateTypebotTenant,
+} from "@/features/typebot/typebot-service";
 import { guardTypebotEndpoint } from "@/features/typebot/typebot-rate-limit";
 
 export async function GET(
@@ -20,14 +30,22 @@ export async function GET(
   }
 
   const { searchParams } = new URL(request.url);
-  const date = searchParams.get("date") ?? undefined;
-  const days = searchParams.get("days")
-    ? Number(searchParams.get("days"))
-    : undefined;
+  const parsed = typebotSlotsQuerySchema.safeParse({
+    date: searchParams.get("date"),
+    days: searchParams.get("days"),
+    period: searchParams.get("period"),
+  });
+  if (!parsed.success) {
+    return typebotError(
+      TYPEFBOT_ERROR_CODES.VALIDATION_ERROR,
+      "Data ou período de consulta inválido.",
+    );
+  }
 
   const { service, slots } = await getTypebotSlots(tenant.id, serviceId, {
-    date,
-    days,
+    date: parsed.data.date,
+    days: parsed.data.days,
+    period: parsed.data.period,
   });
 
   if (!service) {

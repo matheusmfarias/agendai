@@ -682,7 +682,6 @@ function SummaryTab({
             onAction={onOpenPending}
           />
           <PaymentMethods data={data} />
-          <SecondaryMetrics data={data} />
         </aside>
       </div>
     </div>
@@ -824,59 +823,35 @@ function PrimaryMetrics({ data }: { data: FinancialViewData }) {
   );
 }
 
-function SecondaryMetrics({ data }: { data: FinancialViewData }) {
-  const metrics = ["ticket", "paid-appointments", "delinquency"]
-    .map((id) => metricById(data, id))
-    .filter(Boolean);
-
-  return (
-    <Card className="rounded-2xl">
-      <CardHeader>
-        <CardTitle>Análise rápida</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Indicadores úteis sem competir com o dinheiro do período.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {metrics.map((metric) => (
-          <div
-            key={metric!.id}
-            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3"
-          >
-            <div>
-              <p className="text-sm font-semibold">{metric!.label}</p>
-              <p className="text-xs text-muted-foreground">{metric!.trend}</p>
-            </div>
-            <p className="text-sm font-semibold">
-              {formatMetricValue(metric!.value, metric!.valueKind)}
-            </p>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
 function CashFlowCard({ data }: { data: FinancialViewData }) {
   const maxValue = Math.max(
     1,
-    ...data.cashFlow.flatMap((point) => [point.revenue, point.expenses]),
+    ...data.cashFlow.flatMap((point) => [
+      Math.abs(point.revenue),
+      Math.abs(point.expenses),
+    ]),
   );
   const received = metricById(data, "revenue")?.value ?? 0;
   const expenses = metricById(data, "expenses")?.value ?? 0;
   const profit = received - expenses;
   const latestPoint = data.cashFlow[data.cashFlow.length - 1];
-  const [activePointLabel, setActivePointLabel] = useState(
-    latestPoint?.label ?? "",
-  );
+  const cashFlowKey = data.cashFlow.map((point) => point.key).join("|");
+  const [activeSelection, setActiveSelection] = useState(() => ({
+    cashFlowKey,
+    pointKey: latestPoint?.key ?? "",
+  }));
+  const activePointKey =
+    activeSelection.cashFlowKey === cashFlowKey
+      ? activeSelection.pointKey
+      : (latestPoint?.key ?? "");
   const activePoint =
-    data.cashFlow.find((point) => point.label === activePointLabel) ??
+    data.cashFlow.find((point) => point.key === activePointKey) ??
     latestPoint;
   const activeBalance = activePoint
     ? activePoint.revenue - activePoint.expenses
     : 0;
   const hasMovement = data.cashFlow.some(
-    (point) => point.revenue > 0 || point.expenses > 0,
+    (point) => point.revenue !== 0 || point.expenses !== 0,
   );
 
   return (
@@ -929,17 +904,29 @@ function CashFlowCard({ data }: { data: FinancialViewData }) {
                 <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-border/80" />
                 <div className="absolute inset-x-0 bottom-0 top-0 flex items-end gap-1 sm:gap-2">
                   {data.cashFlow.map((point) => {
-                    const isActive = point.label === activePoint?.label;
-                    const revenueHeight = (point.revenue / maxValue) * 100;
-                    const expenseHeight = (point.expenses / maxValue) * 100;
+                    const isActive = point.key === activePoint?.key;
+                    const revenueHeight =
+                      (Math.abs(point.revenue) / maxValue) * 100;
+                    const expenseHeight =
+                      (Math.abs(point.expenses) / maxValue) * 100;
                     const balance = point.revenue - point.expenses;
 
                     return (
                       <button
-                        key={point.label}
+                        key={point.key}
                         type="button"
-                        onClick={() => setActivePointLabel(point.label)}
-                        onFocus={() => setActivePointLabel(point.label)}
+                        onClick={() =>
+                          setActiveSelection({
+                            cashFlowKey,
+                            pointKey: point.key,
+                          })
+                        }
+                        onFocus={() =>
+                          setActiveSelection({
+                            cashFlowKey,
+                            pointKey: point.key,
+                          })
+                        }
                         aria-pressed={isActive}
                         aria-label={`${point.label}: receita ${formatCurrency(point.revenue)}, despesas ${formatCurrency(point.expenses)}, saldo ${formatCurrency(balance)}`}
                         className={cn(
@@ -987,7 +974,7 @@ function CashFlowCard({ data }: { data: FinancialViewData }) {
                 tone="destructive"
               />
               <CashFlowDayMetric
-                label="Saldo do dia"
+                label="Saldo do intervalo"
                 value={activeBalance}
                 tone={activeBalance >= 0 ? "primary" : "destructive"}
               />

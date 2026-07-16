@@ -24,7 +24,8 @@ describe("WhatsApp dispatcher", () => {
       expect.objectContaining({
         where: {
           OR: expect.arrayContaining([
-            { status: "PENDING" },
+            { status: "PENDING", scheduledFor: null },
+            { status: "PENDING", scheduledFor: { lte: expect.any(Date) } },
             {
               status: "RETRYING",
               nextAttemptAt: {
@@ -35,10 +36,23 @@ describe("WhatsApp dispatcher", () => {
         },
       }),
     );
-    const retryCutoff = outbox.findMany.mock.calls[0]?.[0].where.OR[1].nextAttemptAt.lte as Date;
+    const retryCutoff = outbox.findMany.mock.calls[0]?.[0].where.OR[2].nextAttemptAt.lte as Date;
     expect(retryCutoff.getTime()).toBeGreaterThanOrEqual(before.getTime());
     expect(retryCutoff.getTime()).toBeLessThanOrEqual(after.getTime());
     expect(add).toHaveBeenCalledWith("send", { outboxId: id }, { jobId: id });
+  });
+  it("não seleciona lembrete futuro e seleciona PENDING vencido", async () => {
+    await dispatchWhatsAppOutbox(queue);
+    expect(outbox.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: expect.arrayContaining([
+            { status: "PENDING", scheduledFor: null },
+            { status: "PENDING", scheduledFor: { lte: expect.any(Date) } },
+          ]),
+        },
+      }),
+    );
   });
   it("não enfileira se outro dispatcher ganhou o claim", async () => {
     outbox.updateMany.mockResolvedValue({ count: 0 });

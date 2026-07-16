@@ -1,5 +1,9 @@
 # Checklist de Validação — Typebot Real
 
+> **Documento histórico.** Execute o roteiro ponta a ponta do
+> [guia de importação do MVP](./real-setup-guide.md), que contempla o fluxo
+> importável e a Evolution API como canal transacional separado.
+
 Roteiro de testes para validar a montagem do fluxo real no Typebot. Execute
 cada item e marque como concluído.
 
@@ -36,9 +40,8 @@ Antes de configurar o Typebot, valide as credenciais e o status no painel admin:
 
 ## 1. Configuração inicial
 
-- [ ] `apiBaseUrl` configurada corretamente (HTTPS, sem `/` no final)
-- [ ] `tenantSlug` preenchido com o slug correto do prestador
-- [ ] `typebotApiKey` preenchida com o token da credencial do tenant (prefixo `agz_tb_`)
+- [ ] `apiBaseUrl`, `tenantSlug`, `typebotApiKey` e `phone` chegam por `prefilledVariables` no `startChat`
+- [ ] o tenant possui uma credencial ativa criada após a habilitação da criptografia
 - [ ] `typebotApiKey` **não** aparece em nenhuma mensagem visível ao cliente
 - [ ] Todas as variáveis da conversa criadas (ver [real-variable-mapping.md](./real-variable-mapping.md))
 

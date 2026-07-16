@@ -8,6 +8,49 @@ export function jsonOptionsToStrings(options: Prisma.JsonValue | null) {
     .filter(Boolean);
 }
 
+function isValidDateValue(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function validateCustomFieldValue(
+  field: { label: string; fieldType: string; options: Prisma.JsonValue | null },
+  value: string,
+) {
+  switch (field.fieldType) {
+    case "TEXT":
+    case "TEXTAREA":
+      return null;
+    case "NUMBER":
+      return Number.isFinite(Number(value))
+        ? null
+        : `Informe um número válido para ${field.label}.`;
+    case "DATE":
+      return isValidDateValue(value)
+        ? null
+        : `Informe uma data válida para ${field.label}.`;
+    case "BOOLEAN":
+      return value === "Sim" || value === "Não"
+        ? null
+        : `Informe Sim ou Não para ${field.label}.`;
+    case "SELECT":
+      return jsonOptionsToStrings(field.options).includes(value)
+        ? null
+        : `Selecione uma opção válida para ${field.label}.`;
+    default:
+      return `Campo ${field.label} possui um tipo inválido.`;
+  }
+}
+
 export function validateCustomFields(
   fields: {
     id: string;
@@ -39,12 +82,10 @@ export function validateCustomFields(
 
     if (!value) continue;
 
-    if (field.fieldType === "SELECT") {
-      const options = jsonOptionsToStrings(field.options);
-      if (!options.includes(value)) {
-        fieldErrors[key] = [`Selecione uma opção válida para ${field.label}.`];
-        continue;
-      }
+    const validationError = validateCustomFieldValue(field, value);
+    if (validationError) {
+      fieldErrors[key] = [validationError];
+      continue;
     }
 
     rows.push({ customFieldId: field.id, value });
@@ -55,8 +96,4 @@ export function validateCustomFields(
   }
 
   return { ok: true as const, rows };
-}
-
-export function normalizePhone(value: string) {
-  return value.replace(/\D/g, "") || value.trim();
 }

@@ -5,7 +5,8 @@
  * credential ID (or IP for unauthenticated requests), and endpoint group.
  *
  * Limits:
- * - READ:  120 req/min (business, services, service-detail, slots, appointment-detail)
+ * - READ:  120 req/min (business, categories, services, availability and
+ *          appointment detail)
  * - WRITE:  30 req/min (identify, appointments)
  * - AUTH:   20 req/min (unauthenticated / failed auth)
  *
@@ -29,8 +30,12 @@ const WINDOW_MS = 60_000;
 
 const READ_GROUPS = new Set([
   "business",
+  "categories",
   "services",
   "service-detail",
+  "custom-fields",
+  "available-dates",
+  "available-periods",
   "slots",
   "appointment-detail",
 ]);

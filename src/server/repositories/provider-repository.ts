@@ -12,6 +12,7 @@ export function getProviderDashboard(tenantId: string) {
       city: true,
       state: true,
       status: true,
+      publicLinkActive: true,
       onboardingStatus: true,
       subscription: {
         select: {
@@ -77,11 +78,6 @@ export function getProviderSettings(tenantId: string) {
       allowCustomerCancellation: true,
       allowCustomerRescheduling: true,
       cancellationNoticeHours: true,
-      confirmationMessageTemplate: true,
-      reminderMessageTemplate: true,
-      cancellationMessageTemplate: true,
-      enableAutomaticReminders: true,
-      reminderLeadHours: true,
       description: true,
       status: true,
       subscription: {

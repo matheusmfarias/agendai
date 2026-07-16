@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft, Clock } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { getCurrentUser } from "@/features/auth/permissions";
 import { PublicBookingForm } from "@/features/public-booking/public-booking-form";
+import { PublicBookingServicePicker } from "@/features/public-booking/public-booking-service-picker";
 import { getPublicBookingData } from "@/features/public-booking/public-booking-service";
 import { PublicShell } from "@/features/public-booking/public-shell";
 import { PublicUnavailablePage } from "@/features/public-booking/public-unavailable";
@@ -39,15 +39,19 @@ export default async function TenantBookPage({
   params: Promise<{ tenantSlug: string }>;
   searchParams: Promise<{ serviceId?: string }>;
 }) {
-  const { tenantSlug } = await params;
-  const { serviceId } = await searchParams;
-  const data = await getPublicBookingData(tenantSlug, serviceId);
+  const [{ tenantSlug }, { serviceId }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
+  const [data, currentUser] = await Promise.all([
+    getPublicBookingData(tenantSlug, serviceId),
+    getCurrentUser(),
+  ]);
 
   if (!data.available) {
     return <PublicUnavailablePage />;
   }
 
-  const currentUser = await getCurrentUser();
   const customerUser =
     String(currentUser?.globalRole) === "CUSTOMER" ? currentUser : null;
   const redirectTo = serviceId
@@ -90,28 +94,10 @@ export default async function TenantBookPage({
               </p>
             </div>
 
-            <div className="divide-y rounded-2xl border bg-card px-3">
-              {data.services.map((service) => (
-                <Link
-                  key={service.id}
-                  href={`/${data.tenant.slug}/book?serviceId=${service.id}`}
-                  className="flex items-center justify-between gap-4 py-3 transition-colors hover:text-primary"
-                >
-                  <div className="min-w-0">
-                    <p className="line-clamp-2 font-semibold text-foreground">
-                      {service.name}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {service.categoryName} &middot; {service.durationMinutes}{" "}
-                      min
-                    </p>
-                  </div>
-                  <Button size="sm" className="h-8 shrink-0 rounded-full px-3">
-                    Reservar
-                  </Button>
-                </Link>
-              ))}
-            </div>
+            <PublicBookingServicePicker
+              tenantSlug={data.tenant.slug}
+              services={data.services}
+            />
           </section>
         ) : (
           <section className="space-y-5">

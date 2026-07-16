@@ -19,8 +19,10 @@ export default async function TenantBookConfirmPage({
   params: Promise<{ tenantSlug: string }>;
   searchParams: Promise<{ appointmentId?: string }>;
 }) {
-  const { tenantSlug } = await params;
-  const { appointmentId } = await searchParams;
+  const [{ tenantSlug }, { appointmentId }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
 
   const parsed = publicBookingConfirmationSchema.safeParse({
     tenantSlug,

@@ -11,7 +11,8 @@ export async function dispatchWhatsAppOutbox(
   const messages = await prisma.whatsAppMessageOutbox.findMany({
     where: {
       OR: [
-        { status: "PENDING" },
+        { status: "PENDING", scheduledFor: null },
+        { status: "PENDING", scheduledFor: { lte: now } },
         { status: "RETRYING", nextAttemptAt: { lte: now } },
         { status: "QUEUED", queuedAt: { lte: new Date(now.getTime() - 10 * 60_000) } },
         { status: "PROCESSING", processingAt: { lte: new Date(now.getTime() - 10 * 60_000) } },
@@ -24,7 +25,22 @@ export async function dispatchWhatsAppOutbox(
   let queued = 0;
   for (const message of messages) {
     const claimed = await prisma.whatsAppMessageOutbox.updateMany({
-      where: { id: message.id, status: { in: ["PENDING", "RETRYING", "QUEUED", "PROCESSING"] } },
+      where: {
+        id: message.id,
+        OR: [
+          { status: "PENDING", scheduledFor: null },
+          { status: "PENDING", scheduledFor: { lte: now } },
+          { status: "RETRYING", nextAttemptAt: { lte: now } },
+          {
+            status: "QUEUED",
+            queuedAt: { lte: new Date(now.getTime() - 10 * 60_000) },
+          },
+          {
+            status: "PROCESSING",
+            processingAt: { lte: new Date(now.getTime() - 10 * 60_000) },
+          },
+        ],
+      },
       data: { status: "QUEUED", queuedAt: now, nextAttemptAt: null },
     });
     if (!claimed.count) continue;

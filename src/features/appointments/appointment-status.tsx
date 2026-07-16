@@ -16,6 +16,22 @@ const CANCELED_STATUSES = new Set<AppointmentStatus>([
 
 export function deriveTemporalAppointmentStatus({
   status,
+}: {
+  status: AppointmentStatus;
+  endsAt: Date | string;
+  now?: Date;
+}) {
+  return status;
+}
+
+const MANUALLY_COMPLETABLE_STATUSES = new Set<AppointmentStatus>([
+  "CONFIRMED",
+  "RESCHEDULED",
+  "IN_PROGRESS",
+]);
+
+export function getAppointmentCompletionState({
+  status,
   endsAt,
   now = new Date(),
 }: {
@@ -23,11 +39,24 @@ export function deriveTemporalAppointmentStatus({
   endsAt: Date | string;
   now?: Date;
 }) {
-  return new Date(endsAt) < now &&
-    !HISTORY_STATUSES.has(status) &&
-    !CANCELED_STATUSES.has(status)
-    ? "FINISHED"
-    : status;
+  const overtimeMinutes = Math.max(
+    0,
+    Math.floor((now.getTime() - new Date(endsAt).getTime()) / 60_000),
+  );
+  const overdue =
+    overtimeMinutes > 0 && MANUALLY_COMPLETABLE_STATUSES.has(status);
+
+  if (!overdue) {
+    return { overdue: false, overtimeMinutes: 0, overtimeLabel: null } as const;
+  }
+
+  const hours = Math.floor(overtimeMinutes / 60);
+  const minutes = overtimeMinutes % 60;
+  const overtimeLabel = hours
+    ? `${hours}h${minutes ? ` ${minutes}min` : ""} excedido${hours > 1 ? "s" : ""}`
+    : `${minutes} min excedidos`;
+
+  return { overdue: true, overtimeMinutes, overtimeLabel } as const;
 }
 
 export function isAppointmentCanceledStatus(status: AppointmentStatus) {

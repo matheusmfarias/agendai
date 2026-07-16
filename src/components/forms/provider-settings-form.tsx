@@ -10,7 +10,6 @@ import {
   LoaderCircle,
   LockKeyhole,
   MapPin,
-  MessageSquareText,
   MessageCircle,
   Save,
   ShieldCheck,
@@ -77,11 +76,6 @@ type Values = {
   allowCustomerCancellation: boolean;
   allowCustomerRescheduling: boolean;
   cancellationNoticeHours: number;
-  confirmationMessageTemplate: string;
-  reminderMessageTemplate: string;
-  cancellationMessageTemplate: string;
-  enableAutomaticReminders: boolean;
-  reminderLeadHours: number;
   description: string;
 };
 
@@ -102,13 +96,12 @@ type TabId =
   | "public"
   | "location"
   | "booking"
-  | "communication"
   | "notifications"
   | "whatsapp"
   | "subscription"
   | "account";
 
-const TABS: {
+export const PROVIDER_SETTINGS_TABS: {
   id: TabId;
   label: string;
   icon: typeof Store;
@@ -116,7 +109,6 @@ const TABS: {
   { id: "public", label: "Perfil público", icon: Store },
   { id: "location", label: "Localização", icon: MapPin },
   { id: "booking", label: "Agendamento", icon: CalendarClock },
-  { id: "communication", label: "Comunicação", icon: MessageSquareText },
   { id: "notifications", label: "Notificações", icon: BellRing },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "subscription", label: "Assinatura", icon: ShieldCheck },
@@ -283,7 +275,7 @@ export function ProviderSettingsForm({
           <Card className="border-border/70 bg-card/95 py-0 shadow-sm">
             <CardContent className="p-2">
               <div className="flex gap-1 overflow-x-auto pb-1 xl:block xl:space-y-1 xl:pb-0">
-                {TABS.map((tab) => {
+                {PROVIDER_SETTINGS_TABS.map((tab) => {
                   const Icon = tab.icon;
                   const active = activeTab === tab.id;
                   return (
@@ -735,88 +727,6 @@ export function ProviderSettingsForm({
                       form.setValue("allowCustomerRescheduling", checked)
                     }
                   />
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {activeTab === "communication" ? (
-            <Card className="border-border/70 bg-card/95 shadow-sm">
-              <CardContent className="space-y-6 p-5">
-                <div>
-                  <h2 className="text-lg font-semibold">Comunicação</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Modelos usados em confirmações, lembretes e cancelamentos.
-                  </p>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <CheckboxField
-                    label="Lembretes automáticos"
-                    description="Prepara o negócio para envio automático quando o canal estiver ativo."
-                    checked={
-                      values.enableAutomaticReminders ??
-                      defaultValues.enableAutomaticReminders
-                    }
-                    onChange={(checked) =>
-                      form.setValue("enableAutomaticReminders", checked)
-                    }
-                  />
-                  <Field
-                    label="Enviar lembrete antes de (h)"
-                    error={error("reminderLeadHours")}
-                  >
-                    <Input
-                      id="reminderLeadHours"
-                      type="number"
-                      min={1}
-                      {...form.register("reminderLeadHours", {
-                        valueAsNumber: true,
-                        onChange: (event) => {
-                          event.target.value = formatIntegerInput(
-                            event.target.value,
-                          );
-                        },
-                      })}
-                    />
-                  </Field>
-                </div>
-
-                <Field
-                  label="Mensagem de confirmação"
-                  error={error("confirmationMessageTemplate")}
-                >
-                  <Textarea
-                    id="confirmationMessageTemplate"
-                    rows={4}
-                    {...form.register("confirmationMessageTemplate")}
-                  />
-                </Field>
-                <Field
-                  label="Mensagem de lembrete"
-                  error={error("reminderMessageTemplate")}
-                >
-                  <Textarea
-                    id="reminderMessageTemplate"
-                    rows={4}
-                    {...form.register("reminderMessageTemplate")}
-                  />
-                </Field>
-                <Field
-                  label="Mensagem de cancelamento"
-                  error={error("cancellationMessageTemplate")}
-                >
-                  <Textarea
-                    id="cancellationMessageTemplate"
-                    rows={4}
-                    {...form.register("cancellationMessageTemplate")}
-                  />
-                </Field>
-
-                <div className="rounded-xl border border-border bg-muted/25 p-4 text-sm text-muted-foreground">
-                  Variáveis disponíveis: <code>{"{cliente}"}</code>,{" "}
-                  <code>{"{serviço}"}</code>, <code>{"{data}"}</code>,{" "}
-                  <code>{"{hora}"}</code>.
                 </div>
               </CardContent>
             </Card>

@@ -18,8 +18,12 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { AppointmentStatusBadge } from "@/features/appointments/appointment-status";
+import {
+  AppointmentStatusBadge,
+  getAppointmentCompletionState,
+} from "@/features/appointments/appointment-status";
 import { Card, CardContent } from "@/components/ui/card";
+import { getPublicLinkChannelStatus } from "@/features/provider-dashboard/provider-dashboard-channel-status";
 import {
   ContentGrid,
   MetricCard as ModuleMetricCard,
@@ -47,10 +51,12 @@ type ProviderDashboardOverviewProps = {
     publicDisplayName: string | null;
     logoUrl: string | null;
     slug: string;
+    publicLinkActive: boolean;
     status: string;
     onboardingStatus: string;
   };
   todayAppointments: DashboardAppointment[];
+  overdueCompletion: DashboardAppointment[];
   futureAppointments: DashboardAppointment[];
   nextAppointment: DashboardAppointment | null;
   todayCount: number;
@@ -58,8 +64,6 @@ type ProviderDashboardOverviewProps = {
   servicesCount: number;
   categoriesCount: number;
   scheduleBlocksCount: number;
-  publicBookingReady: boolean;
-  publicLinkAllowed: boolean;
   whatsappReady: boolean;
   whatsappAllowed: boolean;
   whatsappStatus: string | null;
@@ -311,30 +315,47 @@ function DashboardMobileFab() {
   );
 }
 
-function ChannelStatusDot({ ready }: { ready: boolean }) {
+function ChannelStatusDot({
+  ready,
+  label,
+  tone = "warning",
+}: {
+  ready: boolean;
+  label: string;
+  tone?: "warning" | "error" | "success";
+}) {
+  const toneClass =
+    tone === "error"
+      ? "bg-destructive"
+      : tone === "success" || ready
+        ? "bg-success"
+        : "bg-warning";
+
   return (
     <span
-      className={`size-2 rounded-full ${ready ? "bg-emerald-500" : "bg-amber-500"}`}
+      role="img"
+      aria-label={label}
+      title={label}
+      className={`size-2 rounded-full ${toneClass}`}
     />
   );
 }
 
 function ChannelsCard({
   tenantSlug,
-  publicBookingReady,
-  publicLinkAllowed,
+  publicLinkActive,
   whatsappReady,
   whatsappAllowed,
   whatsappStatus,
 }: {
   tenantSlug: string;
-  publicBookingReady: boolean;
-  publicLinkAllowed: boolean;
+  publicLinkActive: boolean;
   whatsappReady: boolean;
   whatsappAllowed: boolean;
   whatsappStatus: string | null;
 }) {
   const publicUrl = `/${tenantSlug}`;
+  const publicLinkStatus = getPublicLinkChannelStatus(publicLinkActive);
   const whatsappDetail = !whatsappAllowed
     ? "Indisponível"
     : whatsappStatus === "CONNECTED"
@@ -354,19 +375,25 @@ function ChannelsCard({
     {
       label: "Link público",
       detail: publicUrl,
-      ready: publicBookingReady && publicLinkAllowed,
+      ready: publicLinkStatus.ready,
+      statusLabel: publicLinkStatus.label,
+      tone: publicLinkStatus.tone,
       icon: <Globe className="size-4" />,
     },
     {
       label: "WhatsApp",
       detail: whatsappDetail,
       ready: whatsappReady,
+      statusLabel: whatsappReady ? "WhatsApp conectado" : "WhatsApp indisponível",
+      tone: "warning" as const,
       icon: <MessageCircle className="size-4" />,
     },
     {
       label: "Painel manual",
       detail: "Pronto",
       ready: true,
+      statusLabel: "Painel manual ativo",
+      tone: "success" as const,
       icon: <Monitor className="size-4" />,
     },
   ];
@@ -389,7 +416,11 @@ function ChannelsCard({
                   {row.detail}
                 </p>
               </div>
-              <ChannelStatusDot ready={row.ready} />
+              <ChannelStatusDot
+                ready={row.ready}
+                label={row.statusLabel}
+                tone={row.tone}
+              />
             </div>
           ))}
         </div>
@@ -418,10 +449,15 @@ function AppointmentRow({
   compactDate?: boolean;
   highlighted?: boolean;
 }) {
+  const completion = getAppointmentCompletionState({
+    status: appointment.status,
+    endsAt: appointment.endsAt,
+  });
+
   return (
     <Link
       href={`/app/appointments/${appointment.id}`}
-      className={`grid grid-cols-[6rem_1fr_auto_auto] items-center gap-3 border-t border-border px-5 py-3 transition-colors hover:bg-muted/50 max-sm:grid-cols-[5.25rem_1fr_auto] ${
+      className={`grid grid-cols-[6rem_1fr_auto_auto_auto] items-center gap-3 border-t border-border px-5 py-3 transition-colors hover:bg-muted/50 max-sm:grid-cols-[5.25rem_1fr_auto] ${
         highlighted ? "bg-emerald-50/70" : ""
       }`}
     >
@@ -442,11 +478,26 @@ function AppointmentRow({
         <p className="truncate text-xs text-muted-foreground">
           {serviceMeta(appointment)}
         </p>
+        {completion.overdue ? (
+          <p className="mt-0.5 text-xs font-semibold text-amber-700 sm:hidden">
+            Horário previsto encerrado · {completion.overtimeLabel} · Finalizar
+          </p>
+        ) : null}
       </div>
       <AppointmentStatusBadge
         status={appointment.status}
         className="hidden sm:inline-flex"
       />
+      {completion.overdue ? (
+        <span className="hidden text-right sm:block">
+          <span className="block text-xs font-semibold text-amber-700">
+            Horário previsto encerrado
+          </span>
+          <span className="block text-[11px] text-muted-foreground">
+            {completion.overtimeLabel} · Finalizar
+          </span>
+        </span>
+      ) : null}
       <MoreHorizontal className="size-4 text-muted-foreground" />
     </Link>
   );
@@ -575,17 +626,20 @@ function RecentCustomersCard({
 export function ProviderDashboardOverview({
   tenant,
   todayAppointments,
+  overdueCompletion,
   futureAppointments,
   nextAppointment,
   todayCount,
   activeCustomers,
-  publicBookingReady,
-  publicLinkAllowed,
   whatsappReady,
   whatsappAllowed,
   whatsappStatus,
 }: ProviderDashboardOverviewProps) {
-  const allUpcoming = [...todayAppointments, ...futureAppointments];
+  const allUpcoming = [
+    ...overdueCompletion,
+    ...todayAppointments,
+    ...futureAppointments,
+  ];
   const pendingCount = allUpcoming.filter((appointment) =>
     PENDING_STATUSES.has(appointment.status),
   ).length;
@@ -681,6 +735,17 @@ export function ProviderDashboardOverview({
             </div>
           ) : null}
 
+          {overdueCompletion.length ? (
+            <AppointmentsPanel
+              title="Pendentes de conclusão"
+              subtitle="O horário previsto terminou; finalize manualmente"
+              appointments={overdueCompletion}
+              emptyTitle="Nenhum atendimento pendente"
+              emptyDescription="Atendimentos encerrados aparecem aqui até serem finalizados."
+              compactDate
+            />
+          ) : null}
+
           <AppointmentsPanel
             title="Agenda de hoje"
             subtitle={todayLabel}
@@ -706,8 +771,7 @@ export function ProviderDashboardOverview({
           </div>
           <ChannelsCard
             tenantSlug={tenant.slug}
-            publicBookingReady={publicBookingReady}
-            publicLinkAllowed={publicLinkAllowed}
+            publicLinkActive={tenant.publicLinkActive}
             whatsappReady={whatsappReady}
             whatsappAllowed={whatsappAllowed}
             whatsappStatus={whatsappStatus}

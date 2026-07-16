@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, txMock, createProviderNotificationMock, enqueueConfirmationMock } = vi.hoisted(() => {
+const {
+  prismaMock,
+  txMock,
+  createProviderNotificationMock,
+  enqueueConfirmationMock,
+  enqueueCompletedMock,
+  cancelRemindersMock,
+} = vi.hoisted(() => {
   const tx = {
     customer: { findFirst: vi.fn() },
     service: { findFirst: vi.fn(), findMany: vi.fn() },
@@ -36,6 +43,8 @@ const { prismaMock, txMock, createProviderNotificationMock, enqueueConfirmationM
     },
     createProviderNotificationMock: vi.fn(),
     enqueueConfirmationMock: vi.fn(),
+    enqueueCompletedMock: vi.fn(),
+    cancelRemindersMock: vi.fn(),
   };
 });
 
@@ -45,6 +54,8 @@ vi.mock("@/features/provider-notifications/notification-service", () => ({
 }));
 vi.mock("@/features/whatsapp/whatsapp-outbox-service", () => ({
   enqueueAppointmentConfirmation: enqueueConfirmationMock,
+  enqueueAppointmentCompleted: enqueueCompletedMock,
+  cancelPendingAppointmentReminders: cancelRemindersMock,
 }));
 
 import {
@@ -107,6 +118,7 @@ const mutationMocks = () => [
   txMock.auditLog.create,
   prismaMock.auditLog.create,
   createProviderNotificationMock,
+  enqueueCompletedMock,
 ];
 
 function expectNoSideEffects() {
@@ -116,7 +128,7 @@ function expectNoSideEffects() {
 }
 
 function validCustomer() {
-  return { id: ids.customerA, name: "Cliente A" };
+  return { id: ids.customerA, name: "Cliente A", phone: "11987654321" };
 }
 
 function validService() {
@@ -191,6 +203,58 @@ describe("appointment service tenant isolation", () => {
     expect(enqueueConfirmationMock).toHaveBeenCalledWith(
       txMock,
       expect.objectContaining({ tenantId: ids.tenantA, appointmentId: ids.appointmentB }),
+    );
+  });
+
+  it("cancels an obsolete legacy reminder without creating a new one after rescheduling", async () => {
+    const newStartsAt = new Date("2026-07-21T15:00:00.000Z");
+    txMock.appointment.findFirst.mockResolvedValue(currentAppointment());
+    txMock.customer.findFirst.mockResolvedValue(validCustomer());
+    txMock.service.findFirst.mockResolvedValue(validService());
+    txMock.appointment.update.mockResolvedValue({
+      ...currentAppointment(),
+      startsAt: newStartsAt,
+      endsAt: new Date("2026-07-21T16:00:00.000Z"),
+      status: "RESCHEDULED",
+      customerNotes: "",
+      internalNotes: "",
+    });
+
+    await updateAppointment(
+      { ...updateInput, startsAt: newStartsAt },
+      actor,
+    );
+
+    expect(cancelRemindersMock).toHaveBeenCalledWith(
+      txMock,
+      ids.tenantA,
+      ids.appointmentB,
+    );
+  });
+
+  it("cancels legacy reminders without creating a WhatsApp cancellation", async () => {
+    txMock.appointment.findFirst.mockResolvedValue({
+      ...currentAppointment(),
+      customer: { name: "Cliente A", phone: "11987654321" },
+      service: { name: "Serviço A" },
+      tenant: { timezone: "America/Sao_Paulo" },
+    });
+    txMock.appointment.update.mockResolvedValue({
+      ...currentAppointment(),
+      status: "CANCELED_BY_PROVIDER",
+    });
+
+    await changeAppointmentStatus(
+      ids.appointmentB,
+      "CANCELED_BY_PROVIDER",
+      undefined,
+      actor,
+    );
+
+    expect(cancelRemindersMock).toHaveBeenCalledWith(
+      txMock,
+      ids.tenantA,
+      ids.appointmentB,
     );
   });
 
@@ -280,6 +344,12 @@ describe("appointment service tenant isolation", () => {
       tenantId: ids.tenantA,
       origin: "MANUAL_PANEL",
     });
+    expect(enqueueConfirmationMock).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({
+        appointmentId: "00000000-0000-4000-8000-000000000050",
+      }),
+    );
   });
 
   it("persists payment_pending in the FINISHED transaction and propagates failure", async () => {
@@ -306,6 +376,117 @@ describe("appointment service tenant isolation", () => {
         entityId: ids.appointmentB,
       }),
       txMock,
+    );
+  });
+
+  it("finishes manually and creates APPOINTMENT_COMPLETED in the same transaction", async () => {
+    txMock.appointment.findFirst.mockResolvedValue({
+      ...currentAppointment(),
+      status: "IN_PROGRESS",
+      customer: { name: "Cliente A", phone: "11987654321" },
+      service: { name: "Serviço A" },
+      tenant: { timezone: "America/Sao_Paulo" },
+    });
+    txMock.appointment.update.mockResolvedValue({
+      ...currentAppointment(),
+      status: "FINISHED",
+    });
+    txMock.financialEntry.findFirst.mockResolvedValue({ id: "payment-a" });
+
+    await changeAppointmentStatus(ids.appointmentB, "FINISHED", 100, actor);
+
+    expect(txMock.appointment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "FINISHED" }) }),
+    );
+    expect(enqueueCompletedMock).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({
+        tenantId: ids.tenantA,
+        appointmentId: ids.appointmentB,
+      }),
+    );
+  });
+
+  it("does not duplicate completion effects when the action is repeated", async () => {
+    txMock.appointment.findFirst.mockResolvedValue({
+      ...currentAppointment(),
+      status: "FINISHED",
+      customer: { name: "Cliente A", phone: "11987654321" },
+      service: { name: "Serviço A" },
+      tenant: { timezone: "America/Sao_Paulo" },
+    });
+
+    await changeAppointmentStatus(ids.appointmentB, "FINISHED", 100, actor);
+
+    expect(txMock.appointment.update).not.toHaveBeenCalled();
+    expect(enqueueCompletedMock).not.toHaveBeenCalled();
+    expect(txMock.appointmentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects completion through the generic edit flow", async () => {
+    txMock.appointment.findFirst.mockResolvedValue(currentAppointment());
+
+    await expect(
+      updateAppointment({ ...updateInput, status: "FINISHED" }, actor),
+    ).rejects.toThrow(/ação de finalizar/i);
+
+    expectNoSideEffects();
+  });
+
+  it("keeps the manual completion successful when WhatsApp skips an invalid phone", async () => {
+    txMock.appointment.findFirst.mockResolvedValue({
+      ...currentAppointment(),
+      status: "IN_PROGRESS",
+      customer: { name: "Cliente A", phone: "inválido" },
+      service: { name: "Serviço A" },
+      tenant: { timezone: "America/Sao_Paulo" },
+    });
+    txMock.appointment.update.mockResolvedValue({
+      ...currentAppointment(),
+      status: "FINISHED",
+    });
+    txMock.financialEntry.findFirst.mockResolvedValue({ id: "payment-a" });
+    enqueueCompletedMock.mockResolvedValue({
+      created: false,
+      reason: "invalid_phone",
+    });
+
+    await expect(
+      changeAppointmentStatus(ids.appointmentB, "FINISHED", undefined, actor),
+    ).resolves.toMatchObject({ status: "FINISHED" });
+  });
+
+  it("creates the same completion message when checkout finishes the appointment", async () => {
+    txMock.appointment.findFirst.mockResolvedValue({
+      ...currentAppointment(),
+      status: "IN_PROGRESS",
+      customer: { name: "Cliente A", phone: "11987654321" },
+      service: { name: "Serviço A" },
+    });
+    txMock.appointmentEvent.findFirst.mockResolvedValue(null);
+    txMock.appointment.update.mockResolvedValue({
+      ...currentAppointment(),
+      status: "FINISHED",
+    });
+    txMock.financialEntry.findFirst.mockResolvedValue(null);
+
+    await checkoutAppointment(
+      {
+        id: ids.appointmentB,
+        paymentMethod: "PIX",
+        amount: 100,
+        tip: 0,
+        discount: 0,
+      },
+      actor,
+    );
+
+    expect(enqueueCompletedMock).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({
+        tenantId: ids.tenantA,
+        appointmentId: ids.appointmentB,
+      }),
     );
   });
 

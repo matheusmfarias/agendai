@@ -3,6 +3,7 @@ import type { WhatsAppProvider } from "@/features/whatsapp/contracts/whatsapp-pr
 import { WHATSAPP_ERROR_CODES, WhatsAppError } from "@/features/whatsapp/whatsapp-errors";
 import { normalizeBrazilianWhatsAppPhone } from "@/features/whatsapp/whatsapp-phone";
 import { createWhatsAppProvider } from "@/features/whatsapp/whatsapp-provider-factory";
+import { recordWhatsAppSentMessage } from "@/features/whatsapp/whatsapp-sent-message-receipt";
 import { prisma } from "@/lib/prisma";
 
 const WINDOW_MS = 10 * 60 * 1_000;
@@ -38,15 +39,23 @@ export async function sendWhatsAppTestMessage(
     recipientPhone: phone,
     text: "Mensagem de teste do Agendaí. Sua integração com o WhatsApp está funcionando.",
   });
-  await prisma.auditLog.create({
-    data: {
-      actorType: "TENANT_USER",
-      actorId: input.userId,
+  await prisma.$transaction(async (tx) => {
+    await recordWhatsAppSentMessage(tx, {
       tenantId: input.tenantId,
-      eventType: AUDIT_EVENTS.WHATSAPP_TEST_MESSAGE_SENT,
-      description: "Mensagem de teste do WhatsApp enviada.",
-      metadata: { externalMessageId: result.externalMessageId },
-    },
+      connectionId: connection.id,
+      externalMessageId: result.externalMessageId,
+      source: "TEST",
+    });
+    await tx.auditLog.create({
+      data: {
+        actorType: "TENANT_USER",
+        actorId: input.userId,
+        tenantId: input.tenantId,
+        eventType: AUDIT_EVENTS.WHATSAPP_TEST_MESSAGE_SENT,
+        description: "Mensagem de teste do WhatsApp enviada.",
+        metadata: { externalMessageId: result.externalMessageId },
+      },
+    });
   });
   return result;
 }

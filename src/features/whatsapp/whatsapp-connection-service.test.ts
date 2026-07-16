@@ -38,7 +38,8 @@ function provider(): WhatsAppProvider {
         status: "AWAITING_QR",
       }),
     ),
-    getConnectionStatus: vi.fn(), getQrCode: vi.fn(), sendText: vi.fn(), disconnect: vi.fn(), deleteInstance: vi.fn(), fetchInstanceInfo: vi.fn(),
+    configureWebhook: vi.fn(),
+    getConnectionStatus: vi.fn(), getQrCode: vi.fn(), sendText: vi.fn(), sendButtons: vi.fn(), sendList: vi.fn(), disconnect: vi.fn(), deleteInstance: vi.fn(), fetchInstanceInfo: vi.fn(),
   };
 }
 
@@ -47,7 +48,7 @@ describe("WhatsApp connection service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     connection.findUnique.mockResolvedValue(null);
-    connection.create.mockImplementation(async ({ data }) => ({ id: crypto.randomUUID(), phoneNumber: null, enabled: false, sendAppointmentConfirmation: false, sendAppointmentRequested: true, connectedAt: null, lastHealthyAt: null, lastErrorCode: null, ...data }));
+    connection.create.mockImplementation(async ({ data }) => ({ id: crypto.randomUUID(), phoneNumber: null, enabled: false, sendAppointmentConfirmation: false, sendAppointmentRequested: true, sendAppointmentCompleted: true, connectedAt: null, lastHealthyAt: null, lastErrorCode: null, ...data }));
     audit.create.mockResolvedValue({});
   });
   it("cria nome estável e não usa slug ou tenantId puro", async () => {
@@ -59,7 +60,7 @@ describe("WhatsApp connection service", () => {
     expect(instanceName).not.toContain(actor.tenantId);
   });
   it("reutiliza registro local sem chamar provider", async () => {
-    connection.findUnique.mockResolvedValue({ id: crypto.randomUUID(), status: "CONNECTED", phoneNumber: "5511999999999", enabled: true, sendAppointmentConfirmation: true, sendAppointmentRequested: true, connectedAt: null, lastHealthyAt: null, lastErrorCode: null });
+    connection.findUnique.mockResolvedValue({ id: crypto.randomUUID(), status: "CONNECTED", phoneNumber: "5511999999999", enabled: true, sendAppointmentConfirmation: true, sendAppointmentRequested: true, sendAppointmentCompleted: true, connectedAt: null, lastHealthyAt: null, lastErrorCode: null });
     const mockProvider = provider();
     await createWhatsAppConnection(actor, mockProvider);
     expect(mockProvider.createInstance).not.toHaveBeenCalled();
@@ -80,6 +81,7 @@ describe("WhatsApp connection service", () => {
       enabled: true,
       sendAppointmentConfirmation: true,
       sendAppointmentRequested: false,
+      sendAppointmentCompleted: true,
       connectedAt: null,
       lastHealthyAt: null,
       lastErrorCode: null,

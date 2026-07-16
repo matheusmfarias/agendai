@@ -38,6 +38,7 @@ export async function getTypebotHealth(
     where: { id: tenantId },
     select: {
       status: true,
+      typebotPublicId: true,
       subscription: {
         select: {
           status: true,
@@ -100,6 +101,7 @@ export async function getTypebotHealth(
     && (tenant.subscription.status === "ACTIVE" || tenant.subscription.status === "TRIAL");
   const whatsappEnabled = tenant.subscription?.plan.whatsappEnabled === true;
   const hasCredentials = activeCredentialCount > 0;
+  const hasPublishedBot = Boolean(tenant.typebotPublicId);
   const hasCategories = activeCategoryCount > 0;
   const hasServices = activeServiceCount > 0;
   const hasAvailability = availabilityRuleCount > 0;
@@ -145,6 +147,11 @@ export async function getTypebotHealth(
       detail: hasCredentials
         ? `${activeCredentialCount} credencial(is) ativa(s)`
         : "Nenhuma credencial ativa",
+    },
+    {
+      label: "Bot publicado configurado",
+      ok: hasPublishedBot,
+      detail: hasPublishedBot ? undefined : "Public ID não configurado",
     },
     {
       label: "Categorias ativas",
@@ -204,7 +211,7 @@ export async function getTypebotHealth(
   // ---------------------------------------------------------------------------
 
   const blockers = !tenantActive || !subscriptionOk || !whatsappEnabled
-    || !hasCredentials || !hasServices || !hasAvailability
+    || !hasCredentials || !hasPublishedBot || !hasServices || !hasAvailability
     || !policy.canCreateTypebotAppointment;
 
   if (blockers) {

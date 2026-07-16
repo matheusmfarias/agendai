@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { outbox, sendText } = vi.hoisted(() => ({
-  outbox: { updateMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-  sendText: vi.fn(),
-}));
-vi.mock("@/lib/prisma", () => ({ prisma: { whatsAppMessageOutbox: outbox } }));
+const { outbox, receipt, sendText, prismaMock } = vi.hoisted(() => {
+  const outboxClient = { updateMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() };
+  const receiptClient = { createMany: vi.fn() };
+  const mock = {
+    whatsAppMessageOutbox: outboxClient,
+    whatsAppSentMessageReceipt: receiptClient,
+    $transaction: vi.fn(async (callback: (client: unknown) => Promise<unknown>) => callback(mock)),
+  };
+  return { outbox: outboxClient, receipt: receiptClient, sendText: vi.fn(), prismaMock: mock };
+});
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/features/whatsapp/whatsapp-provider-factory", () => ({ createWhatsAppProvider: () => ({ sendText }) }));
 
 import { processWhatsAppOutbox } from "@/workers/whatsapp-worker";
@@ -12,14 +18,28 @@ import { WhatsAppError } from "@/features/whatsapp/whatsapp-errors";
 
 const id = crypto.randomUUID();
 const tenantId = crypto.randomUUID();
+const appointmentId = crypto.randomUUID();
+const connectionId = crypto.randomUUID();
 const now = new Date("2026-07-14T12:00:00.000Z");
-const payload = { businessName: "Studio", customerName: "Ana", serviceName: "Corte", bookingDate: "14/07/2026", bookingTime: "09:30", appointmentId: crypto.randomUUID() };
+const startsAt = new Date("2026-07-15T12:30:00.000Z");
+const payload = { businessName: "Studio", customerName: "Ana", serviceName: "Corte", bookingDate: "15/07/2026", bookingTime: "09:30", appointmentId, messageTemplate: "Olá, {cliente}. {serviço} em {data} às {hora}." };
+const tenant = {
+  status: "ACTIVE",
+  subscription: {
+    status: "ACTIVE",
+    expiresAt: new Date("2027-01-01T00:00:00.000Z"),
+    plan: { publicLinkEnabled: true, whatsappEnabled: true },
+  },
+};
+function persistedConnection(overrides: Record<string, unknown> = {}) {
+  return { id: connectionId, tenantId, enabled: true, status: "CONNECTED", instanceName: "agendai_x", connectedAt: new Date("2026-07-13T10:00:00.000Z"), tenant, ...overrides };
+}
 function message(overrides: Record<string, unknown> = {}) {
-  return { id, tenantId, type: "APPOINTMENT_CONFIRMED", recipientPhone: "5511987654321", payload, attempts: 1, createdAt: new Date("2026-07-14T11:00:00.000Z"), connection: { tenantId, enabled: true, status: "CONNECTED", instanceName: "agendai_x", connectedAt: new Date("2026-07-13T10:00:00.000Z") }, ...overrides };
+  return { id, tenantId, appointmentId, idempotencyKey: `appointment:${appointmentId}:confirmed:v1`, type: "APPOINTMENT_CONFIRMED", recipientPhone: "5511987654321", payload, attempts: 1, createdAt: new Date("2026-07-14T11:00:00.000Z"), scheduledFor: null, appointment: { id: appointmentId, tenantId, startsAt, status: "CONFIRMED" }, connection: persistedConnection(), ...overrides };
 }
 
 describe("WhatsApp worker", () => {
-  beforeEach(() => { vi.clearAllMocks(); outbox.updateMany.mockResolvedValue({ count: 1 }); outbox.findUnique.mockResolvedValue(message()); outbox.update.mockResolvedValue({}); sendText.mockResolvedValue({ externalMessageId: "remote-1" }); });
+  beforeEach(() => { vi.clearAllMocks(); outbox.updateMany.mockResolvedValue({ count: 1 }); outbox.findUnique.mockResolvedValue(message()); outbox.update.mockResolvedValue({}); receipt.createMany.mockResolvedValue({ count: 1 }); sendText.mockResolvedValue({ externalMessageId: "remote-1" }); });
   it("mantém em RETRYING o 404 de uma instância previamente conectada durante restart", async () => {
     sendText.mockRejectedValue(
       new WhatsAppError(
@@ -83,7 +103,7 @@ describe("WhatsApp worker", () => {
     });
   });
   it("marca FAILED quando a conexão não possui instanceName", async () => {
-    outbox.findUnique.mockResolvedValue(message({ connection: { tenantId, enabled: true, status: "CONNECTED", instanceName: "", connectedAt: new Date("2026-07-13T10:00:00.000Z") } }));
+    outbox.findUnique.mockResolvedValue(message({ connection: persistedConnection({ instanceName: "" }) }));
 
     await processWhatsAppOutbox(id, { now });
 
@@ -97,7 +117,7 @@ describe("WhatsApp worker", () => {
     });
   });
   it("mantém permanente o 404 sem evidência de conexão anterior", async () => {
-    outbox.findUnique.mockResolvedValue(message({ connection: { tenantId, enabled: true, status: "CONNECTED", instanceName: "agendai_x", connectedAt: null } }));
+    outbox.findUnique.mockResolvedValue(message({ connection: persistedConnection({ connectedAt: null }) }));
     sendText.mockRejectedValue(
       new WhatsAppError(
         "WHATSAPP_INSTANCE_NOT_FOUND",
@@ -126,6 +146,15 @@ describe("WhatsApp worker", () => {
   it("valida tenant e marca SENT com id remoto", async () => {
     await processWhatsAppOutbox(id, { now });
     expect(sendText).toHaveBeenCalledOnce();
+    expect(receipt.createMany).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId,
+        connectionId,
+        externalMessageId: "remote-1",
+        source: "TRANSACTIONAL",
+      }),
+      skipDuplicates: true,
+    });
     expect(outbox.update).toHaveBeenLastCalledWith({ where: { id }, data: expect.objectContaining({ status: "SENT", externalMessageId: "remote-1" }) });
   });
   it("renderiza e envia APPOINTMENT_REQUESTED sem alterar a confirmação", async () => {
@@ -149,6 +178,123 @@ describe("WhatsApp worker", () => {
     expect(outbox.update).toHaveBeenLastCalledWith({
       where: { id },
       data: expect.objectContaining({ status: "SENT" }),
+    });
+  });
+  it("envia confirmação persistida para telefone E.164 derivado de nacional com 10 dígitos", async () => {
+    outbox.findUnique.mockResolvedValue(message({ recipientPhone: "555591884991" }));
+
+    await processWhatsAppOutbox(id, { now });
+
+    expect(sendText).toHaveBeenCalledWith(expect.objectContaining({
+      instanceName: "agendai_x",
+      recipientPhone: "555591884991",
+    }));
+  });
+  it("renderiza e envia APPOINTMENT_COMPLETED", async () => {
+    outbox.findUnique.mockResolvedValue(message({
+      type: "APPOINTMENT_COMPLETED",
+      payload: {
+        businessName: "Studio",
+        customerName: "Ana",
+        serviceName: "Corte",
+        bookingDate: "14/07/2026",
+        bookingTime: "09:30",
+        appointmentId,
+      },
+    }));
+
+    await processWhatsAppOutbox(id, { now });
+
+    expect(sendText).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining("Seu atendimento foi concluído"),
+    }));
+  });
+  it.each([
+    ["APPOINTMENT_REMINDER", "Texto antigo de lembrete.", "Passando para lembrar do seu agendamento"],
+    ["APPOINTMENT_CANCELED", "Texto antigo de cancelamento.", "Seu agendamento de Corte"],
+  ])("usa o texto fixo de %s antes de enviar", async (type, messageTemplate, expected) => {
+    outbox.findUnique.mockResolvedValue(
+      message({
+        type,
+        payload: { ...payload, messageTemplate },
+        ...(type === "APPOINTMENT_REMINDER"
+          ? {
+              idempotencyKey: `appointment:${appointmentId}:reminder:${startsAt.getTime()}:v1`,
+            }
+          : {}),
+      }),
+    );
+
+    await processWhatsAppOutbox(id, { now });
+
+    expect(sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining(expected) }),
+    );
+  });
+  it("não envia quando o plano deixa de disponibilizar WhatsApp", async () => {
+    outbox.findUnique.mockResolvedValue(
+      message({
+        connection: persistedConnection({
+          tenant: {
+            ...tenant,
+            subscription: {
+              ...tenant.subscription,
+              plan: { publicLinkEnabled: true, whatsappEnabled: false },
+            },
+          },
+        }),
+      }),
+    );
+
+    await processWhatsAppOutbox(id, { now });
+
+    expect(sendText).not.toHaveBeenCalled();
+    expect(outbox.update).toHaveBeenLastCalledWith({
+      where: { id },
+      data: expect.objectContaining({
+        status: "FAILED",
+        lastErrorCode: "WHATSAPP_DELIVERY_DISABLED",
+      }),
+    });
+  });
+  it("inicia a janela de entrega de lembrete no horário agendado", async () => {
+    outbox.findUnique.mockResolvedValue(
+      message({
+        type: "APPOINTMENT_REMINDER",
+        idempotencyKey: `appointment:${appointmentId}:reminder:${startsAt.getTime()}:v1`,
+        createdAt: new Date("2026-07-01T10:00:00.000Z"),
+        scheduledFor: new Date("2026-07-14T11:30:00.000Z"),
+      }),
+    );
+
+    await processWhatsAppOutbox(id, { now });
+
+    expect(sendText).toHaveBeenCalledOnce();
+  });
+  it("cancela lembrete obsoleto após reagendamento sem chamar o provider", async () => {
+    outbox.findUnique.mockResolvedValue(
+      message({
+        type: "APPOINTMENT_REMINDER",
+        idempotencyKey: `appointment:${appointmentId}:reminder:${startsAt.getTime()}:v1`,
+        appointment: {
+          id: appointmentId,
+          tenantId,
+          startsAt: new Date("2026-07-16T12:30:00.000Z"),
+          status: "RESCHEDULED",
+        },
+      }),
+    );
+
+    await processWhatsAppOutbox(id, { now });
+
+    expect(sendText).not.toHaveBeenCalled();
+    expect(outbox.update).toHaveBeenLastCalledWith({
+      where: { id },
+      data: {
+        status: "CANCELED",
+        nextAttemptAt: null,
+        scheduledFor: null,
+      },
     });
   });
   it.each([
@@ -205,7 +351,7 @@ describe("WhatsApp worker", () => {
     });
   });
   it("trata desativação explícita do tenant como permanente", async () => {
-    outbox.findUnique.mockResolvedValue(message({ connection: { tenantId, enabled: false, status: "CONNECTED", instanceName: "agendai_x" } }));
+    outbox.findUnique.mockResolvedValue(message({ connection: persistedConnection({ enabled: false }) }));
     await processWhatsAppOutbox(id, { now });
     expect(sendText).not.toHaveBeenCalled();
     expect(outbox.update).toHaveBeenLastCalledWith({
@@ -223,7 +369,7 @@ describe("WhatsApp worker", () => {
     });
   });
   it("bloqueia conexão de outro tenant", async () => {
-    outbox.findUnique.mockResolvedValue(message({ connection: { tenantId: crypto.randomUUID(), enabled: true, status: "CONNECTED", instanceName: "other" } }));
+    outbox.findUnique.mockResolvedValue(message({ connection: persistedConnection({ tenantId: crypto.randomUUID(), instanceName: "other" }) }));
     await processWhatsAppOutbox(id, { now });
     expect(sendText).not.toHaveBeenCalled();
     expect(outbox.update).toHaveBeenLastCalledWith({

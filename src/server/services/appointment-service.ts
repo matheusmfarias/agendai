@@ -17,7 +17,11 @@ import {
   type CreateProviderNotificationInput,
 } from "@/features/provider-notifications/notification-service";
 import type { OperationalActorContext } from "@/server/services/customer-service";
-import { enqueueAppointmentConfirmation } from "@/features/whatsapp/whatsapp-outbox-service";
+import {
+  cancelPendingAppointmentReminders,
+  enqueueAppointmentCompleted,
+  enqueueAppointmentConfirmation,
+} from "@/features/whatsapp/whatsapp-outbox-service";
 import {
   getSubscriptionPolicy,
 } from "@/features/subscriptions/subscription-policy";
@@ -64,7 +68,7 @@ async function validateAppointmentSlot(
         tenantId: actor.tenantId,
         isActive: true,
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, phone: true },
     }),
     tx.service.findFirst({
       where: {
@@ -376,6 +380,17 @@ export async function createAppointment(
           metadata,
         ),
       });
+      if (appointment.status === "CONFIRMED") {
+        const messageInput = {
+          tenantId: actor.tenantId,
+          appointmentId: appointment.id,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          serviceName: service.name,
+          startsAt: appointment.startsAt,
+        };
+        await enqueueAppointmentConfirmation(tx, messageInput);
+      }
       return appointment;
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -392,6 +407,11 @@ export async function updateAppointment(
         where: { id: input.id, tenantId: actor.tenantId },
       });
       if (!current) throw new Error("Agendamento n?o encontrado.");
+      if (current.status !== "FINISHED" && input.status === "FINISHED") {
+        throw new Error(
+          "Use a ação de finalizar para concluir o atendimento.",
+        );
+      }
       if (
         ["CANCELED_BY_CUSTOMER", "CANCELED_BY_PROVIDER", "NO_SHOW"].includes(
           current.status,
@@ -402,7 +422,7 @@ export async function updateAppointment(
         );
       }
 
-      let customer: { id: string; name: string };
+      let customer: { id: string; name: string; phone: string };
       let service: {
         id: string;
         name: string;
@@ -429,7 +449,7 @@ export async function updateAppointment(
         const [foundCustomer, foundService] = await Promise.all([
           tx.customer.findFirst({
             where: { id: input.customerId, tenantId: actor.tenantId, isActive: true },
-            select: { id: true, name: true },
+            select: { id: true, name: true, phone: true },
           }),
           tx.service.findFirst({
             where: { id: input.serviceId, tenantId: actor.tenantId },
@@ -567,6 +587,15 @@ export async function updateAppointment(
           metadata,
         ),
       });
+      const scheduleChanged =
+        current.startsAt.getTime() !== appointment.startsAt.getTime();
+      if (scheduleChanged) {
+        await cancelPendingAppointmentReminders(
+          tx,
+          actor.tenantId,
+          appointment.id,
+        );
+      }
       return appointment;
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -658,16 +687,14 @@ export async function changeAppointmentStatus(
         tenant: {
           select: {
             timezone: true,
-            name: true,
-            publicDisplayName: true,
-            address: true,
-            city: true,
-            state: true,
           },
         },
       },
     });
     if (!current) throw new Error("Agendamento não encontrado.");
+    if (current.status === "FINISHED" && status === "FINISHED") {
+      return current;
+    }
     if (!canTransitionAppointmentStatus(current.status, status)) {
       throw new Error(
         `A transição de ${current.status} para ${status} não é permitida.`,
@@ -711,22 +738,40 @@ export async function changeAppointmentStatus(
       ),
     });
     if (current.status !== "CONFIRMED" && status === "CONFIRMED") {
-      await enqueueAppointmentConfirmation(tx, {
+      const messageInput = {
         tenantId: actor.tenantId,
         appointmentId: appointment.id,
         customerName: current.customer.name,
         customerPhone: current.customer.phone,
         serviceName: current.service.name,
         startsAt: appointment.startsAt,
-        timezone: current.tenant.timezone,
-        businessName: current.tenant.publicDisplayName ?? current.tenant.name,
-        businessAddress:
-          [current.tenant.address, current.tenant.city, current.tenant.state]
-            .filter(Boolean)
-            .join(", ") || undefined,
-      });
+      };
+      await enqueueAppointmentConfirmation(tx, messageInput);
+    }
+    if (
+      status === "CANCELED_BY_CUSTOMER" ||
+      status === "CANCELED_BY_PROVIDER"
+    ) {
+      await cancelPendingAppointmentReminders(
+        tx,
+        actor.tenantId,
+        appointment.id,
+      );
     }
     if (status === "FINISHED") {
+      await cancelPendingAppointmentReminders(
+        tx,
+        actor.tenantId,
+        appointment.id,
+      );
+      await enqueueAppointmentCompleted(tx, {
+        tenantId: actor.tenantId,
+        appointmentId: appointment.id,
+        customerName: current.customer.name,
+        customerPhone: current.customer.phone,
+        serviceName: current.service.name,
+        startsAt: appointment.startsAt,
+      });
       const payment = await tx.financialEntry.findFirst({
         where: {
           tenantId: actor.tenantId,
@@ -775,7 +820,7 @@ export async function checkoutAppointment(
     const current = await tx.appointment.findFirst({
       where: { id: input.id, tenantId: actor.tenantId },
       include: {
-        customer: { select: { name: true } },
+        customer: { select: { name: true, phone: true } },
         service: { select: { name: true } },
       },
     });
@@ -848,6 +893,19 @@ export async function checkoutAppointment(
         `Checkout do agendamento de "${current.customer.name}" concluído.`,
         metadata,
       ),
+    });
+    await cancelPendingAppointmentReminders(
+      tx,
+      actor.tenantId,
+      appointment.id,
+    );
+    await enqueueAppointmentCompleted(tx, {
+      tenantId: actor.tenantId,
+      appointmentId: appointment.id,
+      customerName: current.customer.name,
+      customerPhone: current.customer.phone,
+      serviceName: current.service.name,
+      startsAt: appointment.startsAt,
     });
 
     return appointment;

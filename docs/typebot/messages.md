@@ -1,320 +1,129 @@
-# Mensagens ao Cliente
+# Mensagens do fluxo Typebot
 
-Catálogo de mensagens que o Typebot envia ao cliente final durante o fluxo conversacional.
-
----
+Este catálogo documenta os textos apresentados ao cliente durante o agendamento conversacional. O blueprint de produção é a fonte executável do fluxo.
 
 ## Princípios
 
-- Mensagens curtas e diretas, adequadas ao WhatsApp.
-- Nunca expor dados internos (inadimplência, assinatura vencida, stack traces, IDs).
-- Sempre oferecer caminho de saída ("falar com atendimento").
-- Usar emojis com moderação.
-- Formatar listas com um item por linha.
+- Mensagens curtas, cordiais e orientadas à próxima ação.
+- Nenhum erro técnico, identificador interno ou detalhe de integração deve aparecer para o cliente.
+- Use emojis somente quando ajudarem a comunicar o resultado.
+- Use sempre `Voltar` para retornar e `Pular` somente em respostas opcionais.
 
----
+## Início
 
-## Mensagem de abertura
+```text
+Olá! 👋
 
-Após chamar `GET /business` com sucesso:
-
-```
-Olá! Eu sou o assistente virtual de {{tenantName}}.
-
-Vou te ajudar a escolher um serviço e verificar os horários disponíveis.
+Como posso ajudar você na {{tenantName}}?
 ```
 
----
+Opções: `Agendar um horário` e `Falar com atendente`.
 
-## Menu inicial
+## Escolhas do agendamento
 
-```
-Digite uma opção:
-
-1 - Agendar um serviço
-2 - Ver serviços disponíveis
-3 - Falar com atendimento
+```text
+Qual tipo de serviço você procura?
 ```
 
----
-
-## Coleta de dados do cliente
-
-### Perguntar nome
-
-```
-Para começar, qual o seu nome?
+```text
+Agora escolha o serviço:
 ```
 
-### Perguntar telefone (se WhatsApp não fornecer)
-
-```
-Qual o seu telefone com DDD?
-
-Exemplo: 55999999999
+```text
+Qual data fica melhor para você?
 ```
 
-### Perguntar e-mail (opcional)
-
-```
-Se quiser, pode me informar seu e-mail para confirmarmos o agendamento.
-
-Ou digite *pular* para continuar sem e-mail.
+```text
+Qual turno você prefere?
 ```
 
----
-
-## Serviços
-
-### Exibir lista de serviços
-
-```
-{{tenantName}} oferece estes serviços:
-
-{{servicesText}}
-
-Digite o número do serviço que você deseja agendar.
+```text
+Qual horário fica melhor?
 ```
 
-### Serviço escolhido
+As opções de horário exibem somente `HH:mm`. Cada etapa mantém uma opção `Voltar` para a etapa anterior efetivamente apresentada.
 
-Após chamar `GET /services/{id}`:
+## Dados do cliente
 
-```
-Você escolheu: *{{selectedServiceDetailsJson.name}}*
+Quando o telefone não estiver disponível:
 
-⏱️ Duração: {{selectedServiceDetailsJson.durationMinutes}} minutos
-💰 Valor: {{selectedServiceDetailsJson.priceText}}
-
-{{#if customFieldsText}}{{customFieldsText}}{{/if}}
-
-Vou buscar os próximos horários disponíveis...
+```text
+Informe seu telefone com DDD.
 ```
 
----
+Quando houver um cadastro correspondente:
 
-## Horários
+```text
+Encontrei um cadastro em nome de {{customerName}}.
 
-### Exibir lista de horários
-
-```
-Estes são os próximos horários disponíveis para *{{selectedServiceName}}*:
-
-{{slotsText}}
-
-Digite o número do horário desejado.
+Posso usar esses dados?
 ```
 
-### Nenhum horário disponível
+## Dados adicionais
 
-```
-No momento não encontrei horários disponíveis para *{{selectedServiceName}}* nos próximos dias.
+Pergunta obrigatória:
 
-Você pode:
+```text
+{{fieldLabel}}?
 
-1 - Escolher outro serviço
-2 - Falar com atendimento
-
-Digite a opção desejada.
+Digite sua resposta ou envie ‘Voltar’ para retornar.
 ```
 
-### Horário escolhido
+Pergunta opcional:
 
-```
-Você escolheu: *{{selectedSlotLabel}}*
-```
+```text
+{{fieldLabel}}?
 
----
-
-## Campos personalizados
-
-### Perguntar campo de texto
-
-```
-Para continuar com *{{selectedServiceName}}*, preciso de mais uma informação:
-
-{{customFieldLabel}}
+Digite sua resposta, envie ‘Pular’ para continuar ou ‘Voltar’ para retornar.
 ```
 
-### Perguntar campo SELECT
+## Resumo
 
-```
-{{customFieldLabel}}
+```text
+Confira os dados do seu agendamento:
 
-Opções:
-{{optionsText}}
+Serviço: {{selectedServiceName}}
+Data: {{selectedDate}}
+Horário: {{selectedSlotLabel}}
+Cliente: {{customerName}}
+{{customValuesSummarySection}}
 
-Digite o número da opção.
-```
-
----
-
-## Confirmação do resumo
-
-Antes de criar o agendamento, exibir resumo e pedir confirmação:
-
-```
-Confirme os dados do agendamento:
-
-📋 Serviço: {{selectedServiceName}}
-📅 Data e horário: {{selectedSlotLabel}}
-👤 Nome: {{customerName}}
-{{#if customerNotes}}📝 Observação: {{customerNotes}}{{/if}}
-
-Digite:
-1 - Confirmar agendamento
-2 - Cancelar
+Está tudo certo?
 ```
 
----
+`customValuesSummarySection` contém somente as respostas preenchidas, sob o título `Dados adicionais:`.
 
-## Resultado do agendamento
+## Resultado
 
-### CONFIRMED (DIRECT)
+Agendamento com confirmação imediata:
 
-```
-✅ Agendamento confirmado com sucesso!
-
-📋 Serviço: {{selectedServiceName}}
-📅 Data e horário: {{selectedSlotLabel}}
-👤 Nome: {{customerName}}
-{{#if priceText}}💰 Valor: {{priceText}}{{/if}}
-
-Obrigado por agendar com {{tenantName}}!
+```text
+Agendamento confirmado! ✅
 ```
 
-### REQUESTED (REQUIRES_CONFIRMATION)
+Agendamento que depende do estabelecimento:
 
-```
-📩 Sua solicitação foi enviada e aguarda confirmação.
+```text
+Solicitação enviada! ✅
 
-📋 Serviço: {{selectedServiceName}}
-📅 Data e horário solicitado: {{selectedSlotLabel}}
-👤 Nome: {{customerName}}
-
-{{tenantName}} vai analisar sua solicitação e confirmar em breve.
-
-Qualquer dúvida, entre em contato: {{tenantWhatsapp}}
+O estabelecimento ainda precisa confirmar o horário. Avisaremos você por aqui assim que houver uma resposta.
 ```
 
-### WAITING_INFO (INFORMATIONAL)
+## Erros e indisponibilidade
 
-```
-📩 Sua solicitação foi enviada com sucesso.
+As mensagens devem explicar somente a ação possível para o cliente:
 
-📋 Serviço: {{selectedServiceName}}
-👤 Nome: {{customerName}}
-
-{{tenantName}} entrará em contato para dar continuidade ao seu atendimento.
-
-📞 WhatsApp: {{tenantWhatsapp}}
-📍 {{tenantCity}}/{{tenantState}}
+```text
+Não foi possível continuar agora. Tente novamente mais tarde ou volte para escolher outra opção.
 ```
 
----
-
-## Falar com atendimento
-
-### Opção 3 do menu
-
-```
-Você pode entrar em contato diretamente com {{tenantName}}:
-
-📞 WhatsApp: {{tenantWhatsapp}}
-📍 {{tenantCity}}/{{tenantState}}
-
-Estamos à disposição!
+```text
+Esse horário não está mais disponível. Volte e escolha outro horário.
 ```
 
----
-
-## Mensagens de erro
-
-### Erro genérico (fallback)
-
+```text
+Não encontrei horários disponíveis nessa data. Volte e escolha outra data.
 ```
-Tive um problema ao processar sua solicitação.
-
-Tente novamente em alguns instantes ou entre em contato diretamente pelo WhatsApp: {{tenantWhatsapp}}
-```
-
-### Opção inválida
-
-```
-Não encontrei essa opção. Por favor, digite um dos números da lista.
-```
-
-### Serviço indisponível
-
-```
-Esse serviço não está disponível no momento.
-
-Vou te mostrar a lista atualizada de serviços.
-```
-
-### Horário ocupado
-
-```
-Esse horário acabou de ficar indisponível.
-
-Vou buscar os horários atualizados para você.
-```
-
-### Sessão expirada
-
-```
-Seu atendimento foi interrompido por inatividade.
-
-Vamos começar novamente.
-```
-
-### Campo personalizado obrigatório
-
-```
-Preciso de mais uma informação para continuar com seu agendamento.
-```
-
-### Campo personalizado inválido
-
-```
-A informação enviada não parece válida. Vamos tentar novamente.
-```
-
-### Dados incorretos
-
-```
-Alguma informação não está correta. Vamos revisar os dados.
-```
-
-### Negócio indisponível
-
-```
-Este atendimento está temporariamente indisponível.
-
-Entre em contato diretamente com o estabelecimento.
-```
-
----
-
-## Mensagens de encerramento
-
-### Agendamento concluído
-
-```
-Obrigado por agendar com {{tenantName}}!
-
-Se precisar de mais alguma coisa, é só chamar.
-```
-
-### Cliente desiste no meio do fluxo
-
-```
-Tudo bem! Se precisar agendar outro horário, é só me chamar.
-
-{{tenantName}} está à disposição! 👋
-```
-
----
 
 ## Referências
 

@@ -1,31 +1,10 @@
-import { z } from "zod";
-
 import { typebotError, typebotOk, TYPEFBOT_ERROR_CODES, assertNoMojibake } from "@/features/typebot/typebot-responses";
 import { BusinessError, createTypebotAppointment, getTypebotTenant, validateTypebotTenant } from "@/features/typebot/typebot-service";
 import { canCreateTypebotAppointmentForTenant } from "@/features/booking-core/tenant-policy";
 import { getSubscriptionPolicy } from "@/features/subscriptions/subscription-policy";
 import { guardTypebotEndpoint } from "@/features/typebot/typebot-rate-limit";
 import { createAuditLog } from "@/features/audit/audit-log-service";
-
-const bodySchema = z.object({
-  sessionId: z.string().uuid("Session inválida."),
-  customerId: z.string().uuid("Cliente inválido."),
-  serviceId: z.string().uuid("Serviço inválido."),
-  startsAt: z.string().refine(
-    (value) => !Number.isNaN(new Date(value).getTime()),
-    { message: "Horário inválido." },
-  ),
-  customValues: z
-    .array(
-      z.object({
-        customFieldId: z.string().uuid(),
-        value: z.string(),
-      }),
-    )
-    .optional()
-    .default([]),
-  customerNotes: z.string().trim().max(2000).optional(),
-});
+import { typebotAppointmentBodySchema } from "@/features/typebot/typebot-appointment-schema";
 
 export async function POST(
   request: Request,
@@ -86,7 +65,7 @@ export async function POST(
     return typebotError(TYPEFBOT_ERROR_CODES.VALIDATION_ERROR, "Payload inválido.");
   }
 
-  const parsed = bodySchema.safeParse(body);
+  const parsed = typebotAppointmentBodySchema.safeParse(body);
   if (!parsed.success) {
     return typebotError(
       TYPEFBOT_ERROR_CODES.VALIDATION_ERROR,

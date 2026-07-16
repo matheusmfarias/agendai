@@ -82,6 +82,10 @@ A aplicação estará disponível em `http://localhost:3000`.
 | `SEED_ADMIN_EMAIL` | Não | E-mail do Super Admin inicial. Padrão: `admin@example.com`. |
 | `SEED_ADMIN_PASSWORD` | Sim para o seed | Senha do Super Admin inicial, com no mínimo 8 caracteres. |
 | `TYPEBOT_API_KEY` | Não (legado) | Chave global usada apenas em dev como fallback para tenants sem credenciais próprias. Prefira credenciais por tenant (prefixo `agz_tb_`). |
+| `TYPEBOT_VIEWER_URL` | Para o canal conversacional | Origem fixa da instalação Typebot usada pelo worker para iniciar e continuar chats publicados. |
+| `TYPEBOT_REQUEST_TIMEOUT_MS` | Não | Timeout das chamadas do worker ao Typebot. Padrão: `15000`. |
+| `TYPEBOT_HANDOFF_TIMEOUT_MINUTES` | Não | Teto absoluto do handoff humano. Padrão: `1440` (24 horas); a retomada automática ocorre após 30 minutos sem mensagens. |
+| `TYPEBOT_CREDENTIAL_ENCRYPTION_KEY` | Não | Chave dedicada de 32 bytes em base64 para cifrar credenciais recuperáveis. Quando ausente, deriva uma chave separada de `AUTH_SECRET`. |
 
 Nunca use os valores de exemplo em produção.
 
@@ -434,11 +438,12 @@ negócio, consultas ou ações do servidor. Documentação em
 [`/docs/design/public-experience-conversion-redesign.md`](/docs/design/public-experience-conversion-redesign.md).
 
 **WhatsApp transacional — beta:** Integração não oficial com Evolution API 2.3.6,
-conexão por QR Code, status por tenant, teste manual e confirmação de agendamento
-por outbox PostgreSQL, BullMQ e worker separado. Desabilitada por padrão e sem
+conexão por QR Code, status por tenant, teste manual, solicitação recebida,
+confirmação e conclusão manual de atendimento por outbox PostgreSQL, BullMQ e
+worker separado. Desabilitada por padrão e sem
 chatbot, leitura de mensagens ou campanhas. Setup e operação em
 [`/docs/technical/whatsapp-integration.md`](/docs/technical/whatsapp-integration.md)
 e [`/infra/whatsapp/README.md`](/infra/whatsapp/README.md).
 
 Também não existem: painel visual de bot, gateway de pagamento, pagamento online,
-cancelamento ou remarcação via WhatsApp, campanhas ou atendimento conversacional.
+remarcação conversacional via WhatsApp, campanhas ou atendimento conversacional.

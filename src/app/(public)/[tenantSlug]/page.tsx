@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import {
   getPublicPageData,
   getPublicReviewSummary,
@@ -12,6 +14,15 @@ export const metadata = {
   title: "Agendamento online",
 };
 
+async function PublicHeroWithReviews({
+  tenant,
+}: {
+  tenant: Parameters<typeof PublicHero>[0]["tenant"] & { id: string };
+}) {
+  const reviewSummary = await getPublicReviewSummary(tenant.id);
+  return <PublicHero tenant={tenant} reviewSummary={reviewSummary} />;
+}
+
 export default async function TenantHomePage({
   params,
 }: {
@@ -25,7 +36,6 @@ export default async function TenantHomePage({
   }
 
   const { tenant } = data;
-  const reviewSummary = await getPublicReviewSummary(tenant.slug);
   const totalServices = tenant.serviceCategories.reduce(
     (total, category) => total + category.services.length,
     0,
@@ -49,7 +59,9 @@ export default async function TenantHomePage({
     <>
       <PublicShell>
         <div className="space-y-4 sm:space-y-6">
-          <PublicHero tenant={tenant} reviewSummary={reviewSummary} />
+          <Suspense fallback={<PublicHero tenant={tenant} />}>
+            <PublicHeroWithReviews tenant={tenant} />
+          </Suspense>
 
           {totalServices > 0 ? (
             <PublicServiceSearch

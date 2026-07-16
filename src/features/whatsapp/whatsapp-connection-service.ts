@@ -18,6 +18,7 @@ function toView(connection: {
   enabled: boolean;
   sendAppointmentConfirmation: boolean;
   sendAppointmentRequested: boolean;
+  sendAppointmentCompleted: boolean;
   connectedAt: Date | null;
   lastHealthyAt: Date | null;
   lastErrorCode: string | null;
@@ -177,6 +178,7 @@ export async function updateWhatsAppPreferences(
     enabled?: boolean;
     sendAppointmentConfirmation?: boolean;
     sendAppointmentRequested?: boolean;
+    sendAppointmentCompleted?: boolean;
   },
 ) {
   return prisma.$transaction(async (tx) => {

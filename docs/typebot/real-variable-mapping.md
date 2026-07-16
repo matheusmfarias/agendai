@@ -1,30 +1,33 @@
 # Variáveis e Mapeamento — Typebot Real
 
+> **Documento histórico.** A lista vigente está em
+> [`variables.md`](./variables.md) e já vem declarada no JSON importável do MVP.
+
 Todas as variáveis que devem ser criadas na aba **Variables** do Typebot antes
 de montar os blocos. Este documento complementa [variables.md](./variables.md)
 com foco na configuração prática no Typebot real.
 
 ---
 
-## Variáveis de configuração (fixas)
+## Variáveis de configuração injetadas
 
-Criar primeiro. Estas não mudam durante a conversa.
+Estas variáveis são declaradas no blueprint e preenchidas pelo Agendaí no
+`startChat`. Não devem existir blocos **Set variable** com valores fixos no fluxo
+de produção.
 
 | Variável | Tipo no Typebot | Valor | Exemplo |
 |---|---|---|---|
-| `apiBaseUrl` | Text | URL base do AgendaZap (sem `/` no final) | `https://agenda.seudominio.com` |
-| `tenantSlug` | Text | Slug do prestador (fixo por bot) | `mecanica-silva` |
-| `typebotApiKey` | Text | Token da credencial Typebot do tenant (prefixo `agz_tb_`) | `agz_tb_dGhpcyBpcyBhbiBleGFtcGxl...` |
+| `apiBaseUrl` | Text | URL pública do Agendaí | Injetada pelo backend |
+| `tenantSlug` | Text | Slug do tenant resolvido pela instância | Injetada pelo backend |
+| `typebotApiKey` | Text | Credencial ativa do tenant | Injetada pelo backend |
+| `phone` | Text | Telefone normalizado do remetente | Injetada pelo backend |
 
 **Como configurar no Typebot:**
 
-1. Na raiz do fluxo, adicione um bloco **Set variable** logo após o Start
-2. Defina `apiBaseUrl`, `tenantSlug` e `typebotApiKey` com os valores do
-   prestador
-3. `typebotApiKey` deve conter o token gerado no painel admin em
-   `/admin/tenants/[id]/typebot-credentials` (prefixo `agz_tb_`)
-4. `typebotApiKey` **nunca** deve aparecer em mensagens, logs visíveis ou
-   compartilhamentos do bot
+1. Publique o blueprint sem valores fixos para essas variáveis.
+2. Configure `publicId` e credencial no Agendaí para o mesmo tenant.
+3. Use **Variables for test** somente no Preview web, nunca na publicação.
+4. `typebotApiKey` nunca deve aparecer em mensagens, logs ou compartilhamentos.
 
 **Cada prestador tem seu próprio bot e seu próprio token.** Se você atende 3
 prestadores, são 3 bots no Typebot, cada um com seu `tenantSlug` e seu token

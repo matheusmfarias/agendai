@@ -142,6 +142,7 @@ export async function getAppointmentDashboardMetrics(tenantId: string) {
     canceledCount,
     activeCustomers,
     todayAppointments,
+    overdueCompletion,
     upcoming,
   ] = await Promise.all([
       prisma.appointment.count({
@@ -174,6 +175,16 @@ export async function getAppointmentDashboardMetrics(tenantId: string) {
       prisma.appointment.findMany({
         where: {
           tenantId,
+          endsAt: { lt: todayStart },
+          status: { in: ["CONFIRMED", "RESCHEDULED", "IN_PROGRESS"] },
+        },
+        orderBy: { endsAt: "asc" },
+        take: 5,
+        select: dashboardAppointmentSelect,
+      }),
+      prisma.appointment.findMany({
+        where: {
+          tenantId,
           startsAt: { gte: now },
           status: { notIn: [...canceledStatuses, "NO_SHOW", "FINISHED"] },
         },
@@ -190,5 +201,6 @@ export async function getAppointmentDashboardMetrics(tenantId: string) {
     activeCustomers,
     todayAppointments,
     upcoming,
+    overdueCompletion,
   };
 }

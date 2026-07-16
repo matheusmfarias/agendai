@@ -56,6 +56,7 @@ export default async function TypebotCredentialsPage({
       <TypebotCredentialsClient
         tenantId={tenant.id}
         tenantName={tenant.name}
+        initialPublicId={tenant.typebotPublicId ?? ""}
         health={health}
       />
     </>

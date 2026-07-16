@@ -20,6 +20,7 @@ import {
   generateTypebotCredentialAction,
   loadTypebotCredentials,
   revokeTypebotCredentialAction,
+  saveTypebotPublicIdAction,
 } from "@/server/actions/typebot-credential-actions";
 import type { CredentialSummary } from "@/features/typebot/typebot-credentials-service";
 import type { TypebotHealth } from "@/features/typebot/typebot-health-service";
@@ -28,15 +29,19 @@ type Props = {
   tenantId: string;
   tenantName: string;
   health: TypebotHealth;
+  initialPublicId: string;
 };
 
-export function TypebotCredentialsClient({ tenantId, tenantName, health }: Props) {
+export function TypebotCredentialsClient({ tenantId, tenantName, health, initialPublicId }: Props) {
   const [credentials, setCredentials] = useState<CredentialSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [newName, setNewName] = useState("");
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [publicId, setPublicId] = useState(initialPublicId);
+  const [configSaved, setConfigSaved] = useState(false);
 
   const load = useCallback(async () => {
     const list = await loadTypebotCredentials(tenantId);
@@ -55,6 +60,7 @@ export function TypebotCredentialsClient({ tenantId, tenantName, health }: Props
     if (!newName.trim()) return;
     setBusy(true);
     setGeneratedToken(null);
+    setGenerationError(null);
     const result = await generateTypebotCredentialAction(
       tenantId,
       tenantName,
@@ -64,6 +70,8 @@ export function TypebotCredentialsClient({ tenantId, tenantName, health }: Props
       setGeneratedToken(result.credential.token);
       setNewName("");
       await load();
+    } else {
+      setGenerationError(result.error ?? "Não foi possível gerar a credencial.");
     }
     setBusy(false);
   };
@@ -92,6 +100,14 @@ export function TypebotCredentialsClient({ tenantId, tenantName, health }: Props
   const handleDismissToken = () => {
     setGeneratedToken(null);
     setCopied(false);
+  };
+
+  const handleSavePublicId = async () => {
+    setBusy(true);
+    setConfigSaved(false);
+    const result = await saveTypebotPublicIdAction(tenantId, publicId.trim());
+    setConfigSaved(result.ok);
+    setBusy(false);
   };
 
   return (
@@ -185,6 +201,31 @@ export function TypebotCredentialsClient({ tenantId, tenantName, health }: Props
       {/* Generate new credential */}
       <Card>
         <CardHeader>
+          <CardTitle>Bot publicado para o WhatsApp</CardTitle>
+          <CardDescription>
+            Public ID do fluxo publicado usado para iniciar conversas recebidas pela Evolution.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Label htmlFor="typebot-public-id">Public ID</Label>
+          <div className="flex gap-3">
+            <Input
+              id="typebot-public-id"
+              value={publicId}
+              onChange={(event) => setPublicId(event.target.value)}
+              placeholder="meu-typebot-publicado"
+              disabled={busy}
+            />
+            <Button onClick={handleSavePublicId} disabled={busy || !publicId.trim()}>
+              Salvar
+            </Button>
+          </div>
+          {configSaved ? <p className="text-sm text-green-600">Configuração salva.</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Gerar nova credencial</CardTitle>
           <CardDescription>
             Crie um token Typebot para este prestador. O token será usado no
@@ -192,7 +233,12 @@ export function TypebotCredentialsClient({ tenantId, tenantName, health }: Props
             <code>typebotApiKey</code>.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {generationError ? (
+            <Alert variant="destructive" role="alert">
+              {generationError}
+            </Alert>
+          ) : null}
           <div className="flex items-end gap-3">
             <div className="flex-1">
               <Label htmlFor="credential-name">Nome da credencial</Label>

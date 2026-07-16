@@ -1,5 +1,9 @@
 import type {
   TypebotBusinessData,
+  TypebotAvailableDateItem,
+  TypebotAvailablePeriodItem,
+  TypebotAvailabilityPeriod,
+  TypebotCategoryItem,
   TypebotCustomField,
   TypebotServiceDetail,
   TypebotServiceItem,
@@ -8,9 +12,14 @@ import type {
 
 export type SimulatorStep =
   | "tenant"
+  | "intent"
+  | "categories"
+  | "handoff"
   | "customer"
   | "services"
   | "service-detail"
+  | "dates"
+  | "periods"
   | "slots"
   | "custom-fields"
   | "confirm"
@@ -23,6 +32,21 @@ export type StepLog = {
   response: string;
   timestamp: string;
 };
+
+export type SimulatorCustomValue = {
+  customFieldId: string;
+  value: string;
+};
+
+export function buildSimulatorCustomValues(
+  fields: Pick<TypebotCustomField, "id">[],
+  values: Record<string, string>,
+): SimulatorCustomValue[] {
+  return fields.flatMap((field) => {
+    const value = values[field.id]?.trim() ?? "";
+    return value ? [{ customFieldId: field.id, value }] : [];
+  });
+}
 
 export type SimulatorState = {
   /** Current step in the flow */
@@ -38,12 +62,19 @@ export type SimulatorState = {
   // ---- Business ----
   business: TypebotBusinessData | null;
 
+  // ---- Intent and category ----
+  categories: TypebotCategoryItem[];
+  selectedCategoryId: string;
+  selectedCategoryName: string;
+
   // ---- Customer ----
   customerPhone: string;
   customerName: string;
   customerEmail: string;
   customerId: string;
   sessionId: string;
+  customerLookupStatus: "" | "FOUND" | "NOT_FOUND" | "AMBIGUOUS";
+  matchedCustomerName: string;
 
   // ---- Services ----
   services: TypebotServiceItem[];
@@ -53,6 +84,16 @@ export type SimulatorState = {
   // ---- Service Detail ----
   serviceDetail: TypebotServiceDetail | null;
   customFields: TypebotCustomField[];
+  customFieldIndex: number;
+
+  // ---- Available dates ----
+  availableDates: TypebotAvailableDateItem[];
+  selectedDate: string;
+  nextStartDate: string;
+
+  // ---- Available periods ----
+  periods: TypebotAvailablePeriodItem[];
+  selectedPeriod: TypebotAvailabilityPeriod | "";
 
   // ---- Slots ----
   slots: TypebotSlotItem[];
@@ -85,16 +126,27 @@ export const INITIAL_STATE: SimulatorState = {
   tenantAvailable: false,
   tenantUnavailableReason: "",
   business: null,
+  categories: [],
+  selectedCategoryId: "",
+  selectedCategoryName: "",
   customerPhone: "",
   customerName: "",
   customerEmail: "",
   customerId: "",
   sessionId: "",
+  customerLookupStatus: "",
+  matchedCustomerName: "",
   services: [],
   selectedServiceId: "",
   selectedServiceName: "",
   serviceDetail: null,
   customFields: [],
+  customFieldIndex: 0,
+  availableDates: [],
+  selectedDate: "",
+  nextStartDate: "",
+  periods: [],
+  selectedPeriod: "",
   slots: [],
   selectedSlotStartsAt: "",
   selectedSlotLabel: "",

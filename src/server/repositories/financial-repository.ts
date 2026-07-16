@@ -18,6 +18,11 @@ import {
   type FinancialViewData,
 } from "@/features/provider-financial/financial-types";
 import type { FinancialFilterInput } from "@/features/provider-financial/financial-schemas";
+import {
+  buildFinancialCashFlow,
+  resolvedPaidAmountInCents,
+  summarizeFinancialMovements,
+} from "@/features/provider-financial/financial-cash-flow";
 import { prisma } from "@/lib/prisma";
 
 const STATUS_FROM_DB: Record<DbFinancialEntryStatus, FinancialStatus> = {
@@ -79,10 +84,6 @@ type FinancialEntryWithRelations = Prisma.FinancialEntryGetPayload<{
   include: typeof FINANCIAL_INCLUDE;
 }>;
 
-function toIsoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
 function localDateKey(date: Date) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
@@ -90,17 +91,6 @@ function localDateKey(date: Date) {
     month: "2-digit",
     day: "2-digit",
   }).format(date);
-}
-
-function localLabel(dateKey: string) {
-  const date = new Date(`${dateKey}T12:00:00-03:00`);
-  return new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "2-digit",
-    month: "short",
-  })
-    .format(date)
-    .replace(".", "");
 }
 
 function startOfLocalMonth(date: Date) {
@@ -161,10 +151,7 @@ function centsToMoney(cents: number) {
 }
 
 function paidAmountInCents(entry: FinancialEntryWithRelations) {
-  return entry.payments.reduce(
-    (total, payment) => total + payment.amountInCents,
-    0,
-  );
+  return resolvedPaidAmountInCents(entry);
 }
 
 function effectiveStatus(entry: FinancialEntryWithRelations): FinancialStatus {
@@ -189,8 +176,8 @@ function toViewEntry(entry: FinancialEntryWithRelations): FinancialEntry {
 
   return {
     id: entry.id,
-    date: toIsoDate(entry.entryDate),
-    dueDate: entry.dueDate ? toIsoDate(entry.dueDate) : undefined,
+    date: localDateKey(entry.entryDate),
+    dueDate: entry.dueDate ? localDateKey(entry.dueDate) : undefined,
     type: TYPE_FROM_DB[entry.type],
     description: entry.description,
     customerId: entry.customerId ?? undefined,
@@ -209,7 +196,7 @@ function toViewEntry(entry: FinancialEntryWithRelations): FinancialEntry {
     payments: entry.payments.map((payment) => ({
       id: payment.id,
       amount: centsToMoney(payment.amountInCents),
-      paidAt: toIsoDate(payment.paidAt),
+      paidAt: localDateKey(payment.paidAt),
       method: METHOD_FROM_DB[payment.paymentMethod],
       notes: payment.notes ?? undefined,
     })),
@@ -312,8 +299,8 @@ export async function getPendingPayments(
     .filter((appointment) => !existingAppointmentIds.has(appointment.id))
     .map((appointment) => ({
       id: `appointment-pending-${appointment.id}`,
-      date: toIsoDate(appointment.startsAt),
-      dueDate: toIsoDate(appointment.startsAt),
+      date: localDateKey(appointment.startsAt),
+      dueDate: localDateKey(appointment.startsAt),
       type: "revenue",
       description: `Checkout pendente - ${appointment.service.name}`,
       customerId: appointment.customerId,
@@ -341,13 +328,6 @@ export async function getPendingPayments(
   );
 }
 
-function sumPaid(entries: FinancialEntry[], predicate: (entry: FinancialEntry) => boolean) {
-  return entries.reduce(
-    (total, entry) => total + (predicate(entry) ? entry.paidAmount : 0),
-    0,
-  );
-}
-
 function uniqueCount(entries: FinancialEntry[], key: keyof FinancialEntry) {
   return new Set(entries.map((entry) => entry[key]).filter(Boolean)).size;
 }
@@ -358,20 +338,11 @@ function buildCashFlow(entries: FinancialEntry[], filters: FinancialFilterInput)
     filters.startDate,
     filters.endDate,
   );
-  const days: string[] = [];
-  for (let cursor = new Date(range.gte); cursor <= range.lte; cursor = addDays(cursor, 1)) {
-    days.push(localDateKey(cursor));
-  }
-  const relevantDays = days.length > 12 ? days.filter((_, index) => index % 3 === 0) : days;
-
-  return relevantDays.map((day) => {
-    const dayEntries = entries.filter((entry) => entry.date === day);
-    return {
-      label: localLabel(day),
-      revenue: sumPaid(dayEntries, (entry) => entry.type === "revenue"),
-      expenses: sumPaid(dayEntries, (entry) => entry.type === "expense"),
-    };
-  });
+  return buildFinancialCashFlow(
+    entries,
+    localDateKey(range.gte),
+    localDateKey(range.lte),
+  );
 }
 
 function normalizeStringList(value: unknown, fallback: string[]) {
@@ -522,17 +493,13 @@ export async function getFinancialDashboardData(
     getFinancialSettings(tenantId),
   ]);
   const expenses = transactions.filter((entry) => entry.type === "expense");
-  const grossRevenue = sumPaid(
-    transactions,
-    (entry) => entry.type === "revenue",
-  );
-  const refundedTotal = sumPaid(transactions, (entry) => entry.type === "refund");
-  const revenue = grossRevenue - refundedTotal;
+  const movementTotals = summarizeFinancialMovements(transactions);
+  const revenue = movementTotals.revenue;
   const receivable = pendingPayments.reduce(
     (total, entry) => total + entry.outstandingAmount,
     0,
   );
-  const expenseTotal = sumPaid(expenses, () => true);
+  const expenseTotal = movementTotals.expenses;
   const paidRevenue = transactions.filter(
     (entry) => entry.type === "revenue" && entry.paidAmount > 0,
   );

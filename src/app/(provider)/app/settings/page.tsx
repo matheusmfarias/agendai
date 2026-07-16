@@ -23,7 +23,7 @@ export default async function SettingsPage({
     <ModulePage>
       <PageHeading
         title="Configurações do negócio"
-        description="Centralize perfil público, regras de agendamento, comunicação e dados da conta."
+        description="Centralize perfil público, regras de agendamento e dados da conta."
       />
 
       <SuccessAlert code={success} context="settings" />
@@ -90,14 +90,6 @@ export default async function SettingsPage({
           allowCustomerRescheduling:
             tenant.allowCustomerRescheduling,
           cancellationNoticeHours: tenant.cancellationNoticeHours,
-          confirmationMessageTemplate:
-            tenant.confirmationMessageTemplate,
-          reminderMessageTemplate: tenant.reminderMessageTemplate,
-          cancellationMessageTemplate:
-            tenant.cancellationMessageTemplate,
-          enableAutomaticReminders:
-            tenant.enableAutomaticReminders,
-          reminderLeadHours: tenant.reminderLeadHours,
           description: tenant.description ?? "",
         }}
       />

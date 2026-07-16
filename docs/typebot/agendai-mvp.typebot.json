@@ -1,0 +1,4317 @@
+{
+  "version": "6.1",
+  "id": "agendai-typebot-production-import",
+  "name": "Agendaí — Agendamento (Produção)",
+  "events": [
+    {
+      "id": "evt_start",
+      "outgoingEdgeId": "e_start",
+      "graphCoordinates": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "start"
+    }
+  ],
+  "groups": [
+    {
+      "id": "g_boot",
+      "title": "1. Identificar estabelecimento",
+      "graphCoordinates": {
+        "x": 260,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_business",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_business_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_b_business_status",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_b_business_code",
+                "variableId": "v_apiErrorCode",
+                "bodyPath": "data.code"
+              },
+              {
+                "id": "m_b_business_name",
+                "variableId": "v_tenantName",
+                "bodyPath": "data.tenant.name"
+              },
+              {
+                "id": "m_b_business_whatsapp",
+                "variableId": "v_tenantWhatsapp",
+                "bodyPath": "data.tenant.whatsapp"
+              },
+              {
+                "id": "m_business_whatsapp_url",
+                "variableId": "v_tenantWhatsappUrl",
+                "bodyPath": "data.tenant.whatsappUrl"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": false,
+            "timeout": 15,
+            "webhook": {
+              "method": "GET",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/business",
+              "headers": [
+                {
+                  "id": "h_b_business_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "b_business_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_business_fail",
+          "items": [
+            {
+              "id": "i_b_business_condition_match",
+              "outgoingEdgeId": "e_business_ok",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_b_business_condition_0",
+                    "variableId": "v_httpStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "200"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_welcome",
+      "title": "2. Boas-vindas",
+      "graphCoordinates": {
+        "x": 650,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_welcome",
+          "type": "text",
+          "outgoingEdgeId": "e_welcome_intent",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Olá! 👋"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Como posso ajudar você na {{tenantName}}?"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_business_error",
+      "title": "Erro seguro: estabelecimento",
+      "graphCoordinates": {
+        "x": 650,
+        "y": 250
+      },
+      "blocks": [
+        {
+          "id": "b_business_error",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Não foi possível iniciar o agendamento agora."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Tente novamente mais tarde ou entre em contato diretamente com o estabelecimento."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_services",
+      "title": "3. Serviços ativos",
+      "graphCoordinates": {
+        "x": 1030,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_services",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_services_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_b_services_status",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_b_services_code",
+                "variableId": "v_apiErrorCode",
+                "bodyPath": "data.code"
+              },
+              {
+                "id": "m_b_services_names",
+                "variableId": "v_serviceNames",
+                "bodyPath": "data.services.flatMap(item => item.name + ' · ' + item.durationMinutes + ' min' + (item.priceText ? ' · ' + item.priceText : '')).concat(['Voltar'])"
+              },
+              {
+                "id": "m_b_services_ids",
+                "variableId": "v_serviceIds",
+                "bodyPath": "data.services.flatMap(item => item.id).concat(['__BACK_CATEGORY__'])"
+              },
+              {
+                "id": "m_b_services_modes",
+                "variableId": "v_serviceBookingModes",
+                "bodyPath": "data.services.flatMap(item => item.bookingMode).concat([''])"
+              },
+              {
+                "id": "m_b_services_count",
+                "variableId": "v_serviceCount",
+                "bodyPath": "data.services.length"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": false,
+            "timeout": 15,
+            "webhook": {
+              "method": "GET",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/services?categoryId={{selectedCategoryId}}",
+              "headers": [
+                {
+                  "id": "h_b_services_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "b_services_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_services_empty",
+          "items": [
+            {
+              "id": "i_b_services_condition_match",
+              "outgoingEdgeId": "e_services_ok",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_b_services_condition_0",
+                    "variableId": "v_httpStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "200"
+                  },
+                  {
+                    "id": "c_b_services_condition_1",
+                    "variableId": "v_serviceCount",
+                    "comparisonOperator": "Greater than",
+                    "value": "0"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_no_services",
+      "title": "Sem serviços",
+      "graphCoordinates": {
+        "x": 1410,
+        "y": 260
+      },
+      "blocks": [
+        {
+          "id": "b_no_services",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Não encontrei serviços disponíveis para agendamento agora."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Entre em contato diretamente com {{tenantName}}."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_choose_service",
+      "title": "7. Escolher serviço",
+      "graphCoordinates": {
+        "x": 1410,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_service_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Agora escolha o serviço:"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_service_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_b_service_choice_placeholder",
+              "content": "Serviço"
+            }
+          ],
+          "options": {
+            "variableId": "v_selectedServiceName",
+            "dynamicVariableId": "v_serviceNames",
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        },
+        {
+          "id": "b_map_service_id",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedServiceId",
+            "type": "Map item with same index",
+            "mapListItemParams": {
+              "baseItemVariableId": "v_selectedServiceName",
+              "baseListVariableId": "v_serviceNames",
+              "targetListVariableId": "v_serviceIds"
+            }
+          }
+        },
+        {
+          "id": "b_map_booking_mode",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedBookingMode",
+            "type": "Map item with same index",
+            "mapListItemParams": {
+              "baseItemVariableId": "v_selectedServiceName",
+              "baseListVariableId": "v_serviceNames",
+              "targetListVariableId": "v_serviceBookingModes"
+            }
+          }
+        },
+        {
+          "id": "b_reset_next_start_date",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_nextStartDate",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_professional_info",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Certo! Vamos escolher a melhor data."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_reset_date_for_service",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedDate",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_period_for_service",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedPeriod",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_slot_for_service",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedSlotStartsAt",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_appointment_for_service",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_appointmentId",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_custom_values_for_service",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_customValuesJson",
+            "type": "Custom",
+            "expressionToEvaluate": "JSON.stringify([])",
+            "isCode": true,
+            "isUnsafe": false
+          }
+        },
+        {
+          "id": "b_reset_custom_summary_for_service",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_customValuesSummarySection",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_custom_count_for_service",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_customFieldCount",
+            "type": "Custom",
+            "expressionToEvaluate": "0",
+            "isCode": true,
+            "isUnsafe": false
+          }
+        },
+        {
+          "id": "b_service_navigation",
+          "type": "Condition",
+          "outgoingEdgeId": "e_service_dates",
+          "items": [
+            {
+              "id": "i_service_back",
+              "outgoingEdgeId": "e_service_back",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_service_back",
+                    "variableId": "v_selectedServiceId",
+                    "comparisonOperator": "Equal to",
+                    "value": "__BACK_CATEGORY__"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_available_dates",
+      "title": "5. Consultar datas disponíveis",
+      "graphCoordinates": {
+        "x": 1810,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_available_dates",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_available_dates_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_b_available_dates_status",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_b_available_dates_code",
+                "variableId": "v_apiErrorCode",
+                "bodyPath": "data.code"
+              },
+              {
+                "id": "m_b_available_dates_labels",
+                "variableId": "v_availableDateLabels",
+                "bodyPath": "data.dates.flatMap(item => item.label).concat(data.nextStartDate ? ['Ver mais datas'] : []).concat(['Voltar'])"
+              },
+              {
+                "id": "m_b_available_dates_values",
+                "variableId": "v_availableDateValues",
+                "bodyPath": "data.dates.flatMap(item => item.date).concat(data.nextStartDate ? [data.nextStartDate] : []).concat(['__BACK_SERVICE__'])"
+              },
+              {
+                "id": "m_b_available_dates_choice_count",
+                "variableId": "v_availableDateChoiceCount",
+                "bodyPath": "data.dates.length + (data.nextStartDate ? 1 : 0) + 1"
+              },
+              {
+                "id": "m_b_available_dates_next",
+                "variableId": "v_nextStartDate",
+                "bodyPath": "data.nextStartDate"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": false,
+            "timeout": 15,
+            "webhook": {
+              "method": "GET",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/services/{{selectedServiceId}}/available-dates?startDate={{nextStartDate}}&days=14",
+              "headers": [
+                {
+                  "id": "h_b_available_dates_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "b_available_dates_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_available_dates_error",
+          "items": [
+            {
+              "id": "i_available_dates_choices",
+              "outgoingEdgeId": "e_available_dates_choices",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_available_dates_status_choices",
+                    "variableId": "v_httpStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "200"
+                  },
+                  {
+                    "id": "c_available_dates_count",
+                    "variableId": "v_availableDateChoiceCount",
+                    "comparisonOperator": "Greater than",
+                    "value": "0"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "i_available_dates_empty",
+              "outgoingEdgeId": "e_available_dates_empty",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_available_dates_status_empty",
+                    "variableId": "v_httpStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "200"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_choose_date",
+      "title": "6. Escolher data disponível",
+      "graphCoordinates": {
+        "x": 2190,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_date_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Qual data fica melhor para você?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_date_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_b_date_choice_placeholder",
+              "content": "Data"
+            }
+          ],
+          "options": {
+            "variableId": "v_selectedDateLabel",
+            "dynamicVariableId": "v_availableDateLabels",
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        },
+        {
+          "id": "b_map_selected_date",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedDate",
+            "type": "Map item with same index",
+            "mapListItemParams": {
+              "baseItemVariableId": "v_selectedDateLabel",
+              "baseListVariableId": "v_availableDateLabels",
+              "targetListVariableId": "v_availableDateValues"
+            }
+          }
+        },
+        {
+          "id": "b_reset_period_for_date",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedPeriod",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_slot_for_date",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedSlotStartsAt",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_appointment_for_date",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_appointmentId",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_selected_date_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_date_periods",
+          "items": [
+            {
+              "id": "i_selected_date_back",
+              "outgoingEdgeId": "e_date_back",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_selected_date_back",
+                    "variableId": "v_selectedDate",
+                    "comparisonOperator": "Equal to",
+                    "value": "__BACK_SERVICE__"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "i_selected_date_more",
+              "outgoingEdgeId": "e_date_more",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_selected_date_more",
+                    "variableId": "v_selectedDate",
+                    "comparisonOperator": "Equal to",
+                    "value": "{{nextStartDate}}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_no_dates",
+      "title": "Sem datas disponíveis",
+      "graphCoordinates": {
+        "x": 2190,
+        "y": 440
+      },
+      "blocks": [
+        {
+          "id": "b_no_dates_text",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Não encontrei novas datas disponíveis. Volte e escolha outro serviço ou tente novamente mais tarde."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_no_dates_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_no_dates_service",
+              "content": "Voltar",
+              "outgoingEdgeId": "e_no_dates_service"
+            }
+          ],
+          "options": {
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar",
+            "retryMessageContent": "Opção inválida. Escolha uma das opções disponíveis."
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_slots",
+      "title": "7. Consultar horários",
+      "graphCoordinates": {
+        "x": 2570,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_slots",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_slots_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_b_slots_status",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_b_slots_code",
+                "variableId": "v_apiErrorCode",
+                "bodyPath": "data.code"
+              },
+              {
+                "id": "m_b_slots_labels",
+                "variableId": "v_slotLabels",
+                "bodyPath": "data.slots.flatMap(item => item.label.slice(-5)).concat(['Voltar'])"
+              },
+              {
+                "id": "m_b_slots_starts",
+                "variableId": "v_slotStartsAt",
+                "bodyPath": "data.slots.flatMap(item => item.startsAt).concat(['__BACK__'])"
+              },
+              {
+                "id": "m_b_slots_count",
+                "variableId": "v_slotCount",
+                "bodyPath": "data.slots.length"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": false,
+            "timeout": 15,
+            "webhook": {
+              "method": "GET",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/services/{{selectedServiceId}}/slots?date={{selectedDate}}&days=1&period={{selectedPeriod}}",
+              "headers": [
+                {
+                  "id": "h_b_slots_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "b_slots_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_slots_empty",
+          "items": [
+            {
+              "id": "i_b_slots_condition_match",
+              "outgoingEdgeId": "e_slots_ok",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_b_slots_condition_0",
+                    "variableId": "v_httpStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "200"
+                  },
+                  {
+                    "id": "c_b_slots_condition_1",
+                    "variableId": "v_slotCount",
+                    "comparisonOperator": "Greater than",
+                    "value": "0"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_no_slots",
+      "title": "Sem horários / voltar",
+      "graphCoordinates": {
+        "x": 2950,
+        "y": 260
+      },
+      "blocks": [
+        {
+          "id": "b_no_slots",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Não encontrei horários disponíveis nessa data."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Volte e escolha outra data."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_no_slots_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_no_slots_back",
+              "content": "Voltar",
+              "outgoingEdgeId": "e_no_slots_back_router"
+            }
+          ],
+          "options": {
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        },
+        {
+          "id": "b_no_slots_back_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_no_slots_date",
+          "items": [
+            {
+              "id": "i_no_slots_back_period",
+              "outgoingEdgeId": "e_no_slots_period",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_no_slots_back_period_count",
+                    "variableId": "v_periodCount",
+                    "comparisonOperator": "Greater than",
+                    "value": "1"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_choose_slot",
+      "title": "8. Escolher horário",
+      "graphCoordinates": {
+        "x": 2950,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_slot_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Qual horário fica melhor?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_slot_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_b_slot_choice_placeholder",
+              "content": "Horário"
+            }
+          ],
+          "options": {
+            "variableId": "v_selectedSlotLabel",
+            "dynamicVariableId": "v_slotLabels",
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        },
+        {
+          "id": "b_map_slot_start",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedSlotStartsAt",
+            "type": "Map item with same index",
+            "mapListItemParams": {
+              "baseItemVariableId": "v_selectedSlotLabel",
+              "baseListVariableId": "v_slotLabels",
+              "targetListVariableId": "v_slotStartsAt"
+            }
+          }
+        },
+        {
+          "id": "b_reset_appointment_for_slot",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_appointmentId",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_slot_navigation",
+          "type": "Condition",
+          "outgoingEdgeId": "e_slot_customer_entry",
+          "items": [
+            {
+              "id": "i_slot_back_period",
+              "outgoingEdgeId": "e_slot_back_period",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_slot_back_period",
+                    "variableId": "v_selectedSlotStartsAt",
+                    "comparisonOperator": "Equal to",
+                    "value": "__BACK__"
+                  },
+                  {
+                    "id": "c_slot_back_period_count",
+                    "variableId": "v_periodCount",
+                    "comparisonOperator": "Greater than",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "i_slot_back_date",
+              "outgoingEdgeId": "e_slot_back_date",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_slot_back_date",
+                    "variableId": "v_selectedSlotStartsAt",
+                    "comparisonOperator": "Equal to",
+                    "value": "__BACK__"
+                  },
+                  {
+                    "id": "c_slot_back_date_count",
+                    "variableId": "v_periodCount",
+                    "comparisonOperator": "Equal to",
+                    "value": "1"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_customer",
+      "title": "10. Telefone de teste no Preview",
+      "graphCoordinates": {
+        "x": 2580,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_phone_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Informe seu telefone com DDD."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_phone_input",
+          "type": "phone number input",
+          "outgoingEdgeId": "e_customer_phone_after_input",
+          "options": {
+            "variableId": "v_phone",
+            "defaultCountryCode": "BR",
+            "labels": {
+              "placeholder": "Telefone com DDD",
+              "button": "Continuar"
+            },
+            "retryMessageContent": "Informe um telefone válido com DDD."
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_identify",
+      "title": "10. Criar sessão",
+      "graphCoordinates": {
+        "x": 2970,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_identify",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_identify_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_lookup_status_code",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_lookup_error",
+                "variableId": "v_apiErrorCode",
+                "bodyPath": "data.code"
+              },
+              {
+                "id": "m_lookup_status",
+                "variableId": "v_customerLookupStatus",
+                "bodyPath": "data.lookup.status"
+              },
+              {
+                "id": "m_lookup_name",
+                "variableId": "v_matchedCustomerName",
+                "bodyPath": "data.lookup.customerName"
+              },
+              {
+                "id": "m_lookup_session",
+                "variableId": "v_sessionId",
+                "bodyPath": "data.session.id"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": true,
+            "timeout": 15,
+            "webhook": {
+              "method": "POST",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/customers/identify",
+              "headers": [
+                {
+                  "id": "h_b_identify_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                },
+                {
+                  "id": "h_b_identify_content",
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"action\": \"LOOKUP\",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          }
+        },
+        {
+          "id": "b_identify_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_identify_fail",
+          "items": [
+            {
+              "id": "i_customer_found",
+              "outgoingEdgeId": "e_customer_found",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_customer_found",
+                    "variableId": "v_customerLookupStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "FOUND"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "i_customer_new_required",
+              "outgoingEdgeId": "e_customer_new_required",
+              "content": {
+                "logicalOperator": "OR",
+                "comparisons": [
+                  {
+                    "id": "c_customer_not_found",
+                    "variableId": "v_customerLookupStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "NOT_FOUND"
+                  },
+                  {
+                    "id": "c_customer_ambiguous",
+                    "variableId": "v_customerLookupStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "AMBIGUOUS"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_identify_error",
+      "title": "Erro recuperável: identificação",
+      "graphCoordinates": {
+        "x": 3360,
+        "y": 260
+      },
+      "blocks": [
+        {
+          "id": "b_identify_error",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Não consegui validar esses dados."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Revise seu nome e telefone e tente novamente."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_identify_error_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_identify_retry",
+              "content": "Tentar novamente",
+              "outgoingEdgeId": "e_identify_retry"
+            },
+            {
+              "id": "i_identify_back",
+              "content": "Voltar",
+              "outgoingEdgeId": "e_identify_service"
+            }
+          ],
+          "options": {
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_summary",
+      "title": "11. Resumo e confirmação",
+      "graphCoordinates": {
+        "x": 3360,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_format_summary_date",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedDateFormatted",
+            "type": "Custom",
+            "expressionToEvaluate": "const value = String({{selectedDate}} || ''); const parts = value.split('-'); return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : value;",
+            "isCode": true,
+            "isUnsafe": false
+          }
+        },
+        {
+          "id": "b_format_summary_notes",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_customerNotesSummary",
+            "type": "Custom",
+            "expressionToEvaluate": "const value = String({{customerNotes}} || '').trim(); return value ? 'Observação: ' + value : '';",
+            "isCode": true,
+            "isUnsafe": false
+          }
+        },
+        {
+          "id": "b_summary",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Confira os dados do seu agendamento:"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Serviço: {{selectedServiceName}}"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Data: {{selectedDateFormatted}}"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Horário: {{selectedSlotLabel}}"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Cliente: {{customerName}}"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "{{customerNotesSummary}}"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "{{customValuesSummarySection}}"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": ""
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Está tudo certo?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_summary_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_summary_confirm",
+              "content": "Confirmar solicitação",
+              "outgoingEdgeId": "e_summary_confirm"
+            },
+            {
+              "id": "i_summary_back",
+              "content": "Voltar",
+              "outgoingEdgeId": "e_summary_back"
+            }
+          ],
+          "options": {
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_create_guard",
+      "title": "12. Proteção contra duplicidade",
+      "graphCoordinates": {
+        "x": 3750,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_create_guard",
+          "type": "Condition",
+          "outgoingEdgeId": "e_guard_create",
+          "items": [
+            {
+              "id": "i_b_create_guard_match",
+              "outgoingEdgeId": "e_guard_existing",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_b_create_guard_0",
+                    "variableId": "v_appointmentId",
+                    "comparisonOperator": "Is set"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_create",
+      "title": "13. Criar agendamento",
+      "graphCoordinates": {
+        "x": 4140,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_build_appointment_request_body",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_appointmentRequestBody",
+            "type": "Custom",
+            "expressionToEvaluate": "const customValues = JSON.parse({{customValuesJson}} || '[]'); const customerNotes = String({{customerNotes}} || '').trim() || undefined; return JSON.stringify({ sessionId: {{sessionId}}, customerId: {{customerId}}, serviceId: {{selectedServiceId}}, startsAt: {{selectedSlotStartsAt}}, customerNotes, customValues });",
+            "isCode": true,
+            "isUnsafe": false
+          }
+        },
+        {
+          "id": "b_create",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_create_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_b_create_statusCode",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_b_create_code",
+                "variableId": "v_apiErrorCode",
+                "bodyPath": "data.code"
+              },
+              {
+                "id": "m_b_create_id",
+                "variableId": "v_appointmentId",
+                "bodyPath": "data.appointment.id"
+              },
+              {
+                "id": "m_b_create_status",
+                "variableId": "v_appointmentStatus",
+                "bodyPath": "data.appointment.status"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": true,
+            "timeout": 15,
+            "webhook": {
+              "method": "POST",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/appointments",
+              "headers": [
+                {
+                  "id": "h_b_create_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                },
+                {
+                  "id": "h_b_create_content",
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{{appointmentRequestBody}}"
+            }
+          }
+        },
+        {
+          "id": "b_create_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_create_fail",
+          "items": [
+            {
+              "id": "i_b_create_condition_match",
+              "outgoingEdgeId": "e_create_ok",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_b_create_condition_0",
+                    "variableId": "v_httpStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "201"
+                  },
+                  {
+                    "id": "c_b_create_condition_1",
+                    "variableId": "v_appointmentId",
+                    "comparisonOperator": "Is set"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_create_error",
+      "title": "Erro recuperável: criação",
+      "graphCoordinates": {
+        "x": 4530,
+        "y": 280
+      },
+      "blocks": [
+        {
+          "id": "b_create_error",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Não consegui reservar esse horário. Ele pode ter ficado indisponível enquanto você confirmava."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Escolha como deseja continuar:"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_create_error_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_create_retry_slots",
+              "content": "Tentar novamente",
+              "outgoingEdgeId": "e_create_retry_slots"
+            },
+            {
+              "id": "i_create_back",
+              "content": "Voltar",
+              "outgoingEdgeId": "e_create_back"
+            }
+          ],
+          "options": {
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_final",
+      "title": "14. Resultado",
+      "graphCoordinates": {
+        "x": 4530,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_final_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_final_fallback",
+          "items": [
+            {
+              "id": "i_final_confirmed",
+              "outgoingEdgeId": "e_final_confirmed",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_final_confirmed",
+                    "variableId": "v_appointmentStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "CONFIRMED"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "i_final_requested",
+              "outgoingEdgeId": "e_final_requested",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_final_requested",
+                    "variableId": "v_appointmentStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "REQUESTED"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_direct",
+      "title": "Final DIRECT",
+      "graphCoordinates": {
+        "x": 4920,
+        "y": -120
+      },
+      "blocks": [
+        {
+          "id": "b_direct",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Agendamento confirmado! ✅"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_requested",
+      "title": "Final REQUIRES_CONFIRMATION",
+      "graphCoordinates": {
+        "x": 4920,
+        "y": 40
+      },
+      "blocks": [
+        {
+          "id": "b_requested",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Solicitação enviada! ✅"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "O estabelecimento ainda precisa confirmar o horário. Avisaremos você por aqui assim que houver uma resposta."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_final_fallback",
+      "title": "Final seguro",
+      "graphCoordinates": {
+        "x": 4920,
+        "y": 200
+      },
+      "blocks": [
+        {
+          "id": "b_final_fallback",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Recebemos sua solicitação. Consulte o estabelecimento se precisar de mais informações."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_periods",
+      "title": "7. Consultar turnos disponíveis",
+      "graphCoordinates": {
+        "x": 2950,
+        "y": -180
+      },
+      "blocks": [
+        {
+          "id": "b_periods",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_periods_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_periods_status",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_periods_code",
+                "variableId": "v_apiErrorCode",
+                "bodyPath": "data.code"
+              },
+              {
+                "id": "m_periods_labels",
+                "variableId": "v_periodLabels",
+                "bodyPath": "data.periods.flatMap(item => item.label).concat(['Voltar'])"
+              },
+              {
+                "id": "m_periods_values",
+                "variableId": "v_periodValues",
+                "bodyPath": "data.periods.flatMap(item => item.value).concat(['__BACK_DATE__'])"
+              },
+              {
+                "id": "m_periods_count",
+                "variableId": "v_periodCount",
+                "bodyPath": "data.periods.length"
+              },
+              {
+                "id": "m_first_period",
+                "variableId": "v_selectedPeriod",
+                "bodyPath": "data.periods[0].value"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": false,
+            "timeout": 15,
+            "webhook": {
+              "method": "GET",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/services/{{selectedServiceId}}/available-periods?date={{selectedDate}}",
+              "headers": [
+                {
+                  "id": "h_periods_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "b_periods_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_periods_empty",
+          "items": [
+            {
+              "id": "i_periods_multiple",
+              "outgoingEdgeId": "e_periods_multiple",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_periods_multiple",
+                    "variableId": "v_periodCount",
+                    "comparisonOperator": "Greater than",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "i_periods_single",
+              "outgoingEdgeId": "e_periods_single",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_periods_single",
+                    "variableId": "v_periodCount",
+                    "comparisonOperator": "Equal to",
+                    "value": "1"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_choose_period",
+      "title": "8. Escolher turno",
+      "graphCoordinates": {
+        "x": 3340,
+        "y": -180
+      },
+      "blocks": [
+        {
+          "id": "b_period_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Qual turno você prefere?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_period_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_period_placeholder",
+              "content": "Turno"
+            }
+          ],
+          "options": {
+            "variableId": "v_selectedPeriodLabel",
+            "dynamicVariableId": "v_periodLabels",
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        },
+        {
+          "id": "b_map_period",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedPeriod",
+            "type": "Map item with same index",
+            "mapListItemParams": {
+              "baseItemVariableId": "v_selectedPeriodLabel",
+              "baseListVariableId": "v_periodLabels",
+              "targetListVariableId": "v_periodValues"
+            }
+          }
+        },
+        {
+          "id": "b_reset_slot_for_period",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedSlotStartsAt",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_appointment_for_period",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_appointmentId",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_period_navigation",
+          "type": "Condition",
+          "outgoingEdgeId": "e_period_slots",
+          "items": [
+            {
+              "id": "i_period_back",
+              "outgoingEdgeId": "e_period_back",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_period_back",
+                    "variableId": "v_selectedPeriod",
+                    "comparisonOperator": "Equal to",
+                    "value": "__BACK_DATE__"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_customer_entry",
+      "title": "10. Usar telefone da conversa",
+      "graphCoordinates": {
+        "x": 4100,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_customer_phone_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_customer_phone_fallback",
+          "items": [
+            {
+              "id": "i_customer_phone_set",
+              "outgoingEdgeId": "e_customer_phone_lookup",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_customer_phone_set",
+                    "variableId": "v_phone",
+                    "comparisonOperator": "Is set"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_customer_match",
+      "title": "12. Confirmar cadastro encontrado",
+      "graphCoordinates": {
+        "x": 4900,
+        "y": -160
+      },
+      "blocks": [
+        {
+          "id": "b_customer_match_text",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Encontrei um cadastro em nome de {{matchedCustomerName}}."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Posso usar esses dados?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_customer_match_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_customer_match_yes",
+              "content": "Sim, continuar",
+              "outgoingEdgeId": "e_customer_confirm"
+            },
+            {
+              "id": "i_customer_match_no",
+              "content": "Não sou eu",
+              "outgoingEdgeId": "e_customer_new"
+            },
+            {
+              "id": "i_customer_match_back",
+              "content": "Voltar",
+              "outgoingEdgeId": "e_customer_match_back"
+            }
+          ],
+          "options": {
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_customer_confirm",
+      "title": "13. Reutilizar cliente",
+      "graphCoordinates": {
+        "x": 5280,
+        "y": -160
+      },
+      "blocks": [
+        {
+          "id": "b_customer_confirm",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_customer_confirm_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_confirm_status",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_confirm_customer",
+                "variableId": "v_customerId",
+                "bodyPath": "data.customer.id"
+              },
+              {
+                "id": "m_confirm_name",
+                "variableId": "v_customerName",
+                "bodyPath": "data.customer.name"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": true,
+            "timeout": 15,
+            "webhook": {
+              "method": "POST",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/customers/identify",
+              "headers": [
+                {
+                  "id": "h_customer_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                },
+                {
+                  "id": "h_customer_content",
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"action\": \"CONFIRM\",\n  \"sessionId\": \"{{sessionId}}\"\n}"
+            }
+          }
+        },
+        {
+          "id": "b_customer_confirm_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_customer_confirm_error",
+          "items": [
+            {
+              "id": "i_customer_confirm_ok",
+              "outgoingEdgeId": "e_customer_confirm_ok",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_customer_confirm_ok",
+                    "variableId": "v_customerId",
+                    "comparisonOperator": "Is set"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_customer_new",
+      "title": "13. Informar nome",
+      "graphCoordinates": {
+        "x": 4900,
+        "y": 180
+      },
+      "blocks": [
+        {
+          "id": "b_new_name_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Ainda não encontrei seus dados por aqui."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Qual é o seu nome completo?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_new_name_input",
+          "type": "text input",
+          "options": {
+            "variableId": "v_customerName",
+            "isLong": false,
+            "labels": {
+              "placeholder": "Seu nome",
+              "button": "Continuar"
+            }
+          }
+        },
+        {
+          "id": "b_customer_create",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_customer_create_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_create_customer_status",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_create_customer_id",
+                "variableId": "v_customerId",
+                "bodyPath": "data.customer.id"
+              },
+              {
+                "id": "m_create_customer_name",
+                "variableId": "v_customerName",
+                "bodyPath": "data.customer.name"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": true,
+            "timeout": 15,
+            "webhook": {
+              "method": "POST",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/customers/identify",
+              "headers": [
+                {
+                  "id": "h_customer_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                },
+                {
+                  "id": "h_customer_content",
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"action\": \"CREATE\",\n  \"sessionId\": \"{{sessionId}}\",\n  \"name\": \"{{customerName}}\",\n  \"rejectedExisting\": true\n}"
+            }
+          }
+        },
+        {
+          "id": "b_customer_create_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_customer_create_error",
+          "items": [
+            {
+              "id": "i_customer_create_ok",
+              "outgoingEdgeId": "e_customer_create_ok",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_customer_create_ok",
+                    "variableId": "v_customerId",
+                    "comparisonOperator": "Is set"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_intent",
+      "title": "3. Início",
+      "graphCoordinates": {
+        "x": 980,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_intent_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_intent_booking",
+              "content": "Agendar um horário",
+              "outgoingEdgeId": "e_intent_booking"
+            },
+            {
+              "id": "i_intent_handoff",
+              "content": "Falar com atendente",
+              "outgoingEdgeId": "e_intent_handoff"
+            },
+            {
+              "id": "i_intent_end",
+              "content": "Encerrar atendimento",
+              "outgoingEdgeId": "e_intent_end"
+            }
+          ],
+          "options": {
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar",
+            "retryMessageContent": "Opção inválida. Escolha uma das opções disponíveis."
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_handoff",
+      "title": "Atendimento com o estabelecimento",
+      "graphCoordinates": {
+        "x": 1360,
+        "y": 300
+      },
+      "blocks": [
+        {
+          "id": "b_handoff_flag",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_handoffRequested",
+            "type": "Custom",
+            "expressionToEvaluate": "'true'",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_handoff_text",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Certo! Vou deixar a conversa com o estabelecimento."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Assim que possível, alguém continuará o atendimento por aqui."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_end_conversation",
+      "title": "Encerrar atendimento",
+      "graphCoordinates": {
+        "x": 1360,
+        "y": 520
+      },
+      "blocks": [
+        {
+          "id": "b_end_conversation_text",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Atendimento encerrado."
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Quando precisar, é só mandar uma nova mensagem por aqui."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_categories",
+      "title": "4. Categorias ativas",
+      "graphCoordinates": {
+        "x": 1360,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_categories",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_categories_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              {
+                "id": "m_categories_status",
+                "variableId": "v_httpStatus",
+                "bodyPath": "statusCode"
+              },
+              {
+                "id": "m_categories_code",
+                "variableId": "v_apiErrorCode",
+                "bodyPath": "data.code"
+              },
+              {
+                "id": "m_categories_labels",
+                "variableId": "v_categoryLabels",
+                "bodyPath": "data.categories.flatMap(item => item.name).concat(['Voltar'])"
+              },
+              {
+                "id": "m_categories_ids",
+                "variableId": "v_categoryIds",
+                "bodyPath": "data.categories.flatMap(item => item.id).concat(['__BACK_INTENT__'])"
+              },
+              {
+                "id": "m_categories_count",
+                "variableId": "v_categoryCount",
+                "bodyPath": "data.categories.length"
+              }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": false,
+            "timeout": 15,
+            "webhook": {
+              "method": "GET",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/categories",
+              "headers": [
+                {
+                  "id": "h_categories_auth",
+                  "key": "x-typebot-api-key",
+                  "value": "{{typebotApiKey}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "b_categories_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_categories_empty",
+          "items": [
+            {
+              "id": "i_categories_available",
+              "outgoingEdgeId": "e_categories_available",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_categories_status",
+                    "variableId": "v_httpStatus",
+                    "comparisonOperator": "Equal to",
+                    "value": "200"
+                  },
+                  {
+                    "id": "c_categories_count",
+                    "variableId": "v_categoryCount",
+                    "comparisonOperator": "Greater than",
+                    "value": "0"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_choose_category",
+      "title": "5. Escolher categoria",
+      "graphCoordinates": {
+        "x": 1740,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_category_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Qual tipo de serviço você procura?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_category_choice",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_category_placeholder",
+              "content": "Categoria"
+            }
+          ],
+          "options": {
+            "variableId": "v_selectedCategoryLabel",
+            "dynamicVariableId": "v_categoryLabels",
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        },
+        {
+          "id": "b_map_category",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedCategoryId",
+            "type": "Map item with same index",
+            "mapListItemParams": {
+              "baseItemVariableId": "v_selectedCategoryLabel",
+              "baseListVariableId": "v_categoryLabels",
+              "targetListVariableId": "v_categoryIds"
+            }
+          }
+        },
+        {
+          "id": "b_reset_service_for_category",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedServiceId",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_date_for_category",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedDate",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_period_for_category",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedPeriod",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_slot_for_category",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_selectedSlotStartsAt",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_reset_appointment_for_category",
+          "type": "Set variable",
+          "options": {
+            "variableId": "v_appointmentId",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_category_navigation",
+          "type": "Condition",
+          "outgoingEdgeId": "e_category_services",
+          "items": [
+            {
+              "id": "i_category_back",
+              "outgoingEdgeId": "e_category_back",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_category_back",
+                    "variableId": "v_selectedCategoryId",
+                    "comparisonOperator": "Equal to",
+                    "value": "__BACK_INTENT__"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_no_categories",
+      "title": "Sem categorias agendáveis",
+      "graphCoordinates": {
+        "x": 1740,
+        "y": 300
+      },
+      "blocks": [
+        {
+          "id": "b_no_categories_text",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Não encontrei categorias com serviços disponíveis agora."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_no_categories_back",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i_no_categories_back",
+              "content": "Voltar",
+              "outgoingEdgeId": "e_no_categories_back"
+            }
+          ],
+          "options": {
+            "isMultipleChoice": false,
+            "buttonLabel": "Continuar"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_customer_rejected_name",
+      "title": "13. Corrigir nome do cliente",
+      "graphCoordinates": {
+        "x": 4700,
+        "y": 180
+      },
+      "blocks": [
+        {
+          "id": "b_customer_rejected_name_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Qual é o seu nome completo?"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Digite sua resposta ou ‘Voltar’ para usar o cadastro encontrado."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_customer_rejected_name_input",
+          "type": "text input",
+          "outgoingEdgeId": "e_customer_rejected_name_condition",
+          "options": {
+            "variableId": "v_customerName",
+            "isLong": false,
+            "labels": {
+              "placeholder": "Seu nome",
+              "button": "Continuar"
+            }
+          }
+        },
+        {
+          "id": "b_customer_rejected_name_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_customer_new_continue",
+          "items": [
+            {
+              "id": "i_customer_new_back",
+              "outgoingEdgeId": "e_customer_new_back",
+              "content": {
+                "logicalOperator": "OR",
+                "comparisons": [
+                  {
+                    "id": "c_customer_new_back_title",
+                    "variableId": "v_customerName",
+                    "comparisonOperator": "Equal to",
+                    "value": "Voltar"
+                  },
+                  {
+                    "id": "c_customer_new_back_lower",
+                    "variableId": "v_customerName",
+                    "comparisonOperator": "Equal to",
+                    "value": "voltar"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_customer_notes",
+      "title": "10. Observação opcional",
+      "graphCoordinates": {
+        "x": 4660,
+        "y": 420
+      },
+      "blocks": [
+        {
+          "id": "b_customer_notes_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Deseja adicionar alguma observação?"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Digite sua resposta, envie “Pular” para continuar ou “Voltar” para retornar."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_customer_notes_input",
+          "type": "text input",
+          "outgoingEdgeId": "e_customer_notes_condition",
+          "options": {
+            "variableId": "v_customerNotes",
+            "isLong": true,
+            "labels": {
+              "placeholder": "Observação opcional",
+              "button": "Continuar"
+            }
+          }
+        },
+        {
+          "id": "b_customer_notes_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_customer_notes_continue",
+          "items": [
+            {
+              "id": "i_customer_notes_back",
+              "outgoingEdgeId": "e_customer_notes_back",
+              "content": {
+                "logicalOperator": "OR",
+                "comparisons": [
+                  {
+                    "id": "c_customer_notes_back_title",
+                    "variableId": "v_customerNotes",
+                    "comparisonOperator": "Equal to",
+                    "value": "Voltar"
+                  },
+                  {
+                    "id": "c_customer_notes_back_lower",
+                    "variableId": "v_customerNotes",
+                    "comparisonOperator": "Equal to",
+                    "value": "voltar"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "i_customer_notes_skip",
+              "outgoingEdgeId": "e_customer_notes_skip",
+              "content": {
+                "logicalOperator": "OR",
+                "comparisons": [
+                  {
+                    "id": "c_customer_notes_skip_title",
+                    "variableId": "v_customerNotes",
+                    "comparisonOperator": "Equal to",
+                    "value": "Pular"
+                  },
+                  {
+                    "id": "c_customer_notes_skip_lower",
+                    "variableId": "v_customerNotes",
+                    "comparisonOperator": "Equal to",
+                    "value": "pular"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_customer_notes_skip",
+      "title": "Ignorar observação",
+      "graphCoordinates": {
+        "x": 5050,
+        "y": 520
+      },
+      "blocks": [
+        {
+          "id": "b_customer_notes_clear",
+          "type": "Set variable",
+          "outgoingEdgeId": "e_customer_notes_skip_continue",
+          "options": {
+            "variableId": "v_customerNotes",
+            "type": "Custom",
+            "expressionToEvaluate": "''",
+            "isCode": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_customer_notes_back",
+      "title": "Retornar da observação",
+      "graphCoordinates": {
+        "x": 5050,
+        "y": 680
+      },
+      "blocks": [
+        {
+          "id": "b_customer_notes_back_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_customer_notes_back_slot",
+          "items": [
+            {
+              "id": "i_customer_notes_back_custom_field",
+              "outgoingEdgeId": "e_customer_notes_back_custom_field",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "c_customer_notes_has_custom_field",
+                    "variableId": "v_customFieldCount",
+                    "comparisonOperator": "Greater than",
+                    "value": "0"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g_custom_fields",
+      "title": "9. Consultar perguntas do serviço",
+      "graphCoordinates": { "x": 3720, "y": -320 },
+      "blocks": [
+        {
+          "id": "b_custom_fields_reset_index",
+          "type": "Set variable",
+          "options": { "variableId": "v_customFieldIndex", "type": "Custom", "expressionToEvaluate": "0", "isCode": true, "isUnsafe": false }
+        },
+        {
+          "id": "b_custom_fields_reset_values",
+          "type": "Set variable",
+          "options": { "variableId": "v_customValuesJson", "type": "Custom", "expressionToEvaluate": "JSON.stringify([])", "isCode": true, "isUnsafe": false }
+        },
+        {
+          "id": "b_custom_fields_reset_summary",
+          "type": "Set variable",
+          "options": { "variableId": "v_customValuesSummarySection", "type": "Custom", "expressionToEvaluate": "''", "isCode": false }
+        },
+        {
+          "id": "b_customer_notes_reset",
+          "type": "Set variable",
+          "options": { "variableId": "v_customerNotes", "type": "Custom", "expressionToEvaluate": "''", "isCode": false }
+        },
+        {
+          "id": "b_custom_fields",
+          "type": "Webhook",
+          "outgoingEdgeId": "e_custom_fields_condition",
+          "options": {
+            "variablesForTest": [],
+            "responseVariableMapping": [
+              { "id": "m_custom_fields_status", "variableId": "v_httpStatus", "bodyPath": "statusCode" },
+              { "id": "m_custom_fields_count", "variableId": "v_customFieldCount", "bodyPath": "data.fields.length" },
+              { "id": "m_custom_field_ids", "variableId": "v_customFieldIds", "bodyPath": "data.fields.map(item => item.id)" },
+              { "id": "m_custom_field_labels", "variableId": "v_customFieldLabels", "bodyPath": "data.fields.map(item => item.label)" },
+              { "id": "m_custom_field_types", "variableId": "v_customFieldTypes", "bodyPath": "data.fields.map(item => item.type)" },
+              { "id": "m_custom_field_required", "variableId": "v_customFieldRequiredFlags", "bodyPath": "data.fields.map(item => item.required ? 'true' : 'false')" },
+              { "id": "m_custom_field_required_labels", "variableId": "v_customFieldRequiredLabels", "bodyPath": "data.fields.map(item => (item.required ? 'Digite sua resposta ou ' : 'Digite sua resposta, envie “Pular” para continuar ou ') + '“Voltar” para retornar.')" },
+              { "id": "m_custom_field_placeholders", "variableId": "v_customFieldPlaceholders", "bodyPath": "data.fields.map(item => item.placeholder || 'Digite sua resposta')" },
+              { "id": "m_custom_field_options", "variableId": "v_customFieldOptionsJson", "bodyPath": "data.fields.map(item => JSON.stringify(item.options || []))" }
+            ],
+            "isAdvancedConfig": true,
+            "isCustomBody": false,
+            "timeout": 15,
+            "webhook": {
+              "method": "GET",
+              "url": "{{apiBaseUrl}}/api/typebot/{{tenantSlug}}/services/{{selectedServiceId}}/custom-fields",
+              "headers": [{ "id": "h_custom_fields_auth", "key": "x-typebot-api-key", "value": "{{typebotApiKey}}" }]
+            }
+          }
+        },
+        {
+          "id": "b_custom_fields_condition",
+          "type": "Condition",
+          "outgoingEdgeId": "e_custom_fields_empty",
+          "items": [{
+            "id": "i_custom_fields_available",
+            "outgoingEdgeId": "e_custom_fields_available",
+            "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_fields_available", "variableId": "v_customFieldCount", "comparisonOperator": "Greater than", "value": "0" }] }
+          }]
+        }
+      ]
+    },
+    {
+      "id": "g_custom_field_prepare",
+      "title": "Preparar pergunta atual",
+      "graphCoordinates": { "x": 4100, "y": -320 },
+      "blocks": [
+        { "id": "b_current_custom_field_id", "type": "Set variable", "options": { "variableId": "v_currentCustomFieldId", "type": "Custom", "expressionToEvaluate": "{{customFieldIds}}[Number({{customFieldIndex}})]", "isCode": true, "isUnsafe": false } },
+        { "id": "b_current_custom_field_label", "type": "Set variable", "options": { "variableId": "v_currentCustomFieldLabel", "type": "Custom", "expressionToEvaluate": "const label = String({{customFieldLabels}}[Number({{customFieldIndex}})] || '').trim().replace(/\\?+$/, ''); return label.charAt(0).toUpperCase() + label.slice(1) + '?';", "isCode": true, "isUnsafe": false } },
+        { "id": "b_current_custom_field_type", "type": "Set variable", "options": { "variableId": "v_currentCustomFieldType", "type": "Custom", "expressionToEvaluate": "{{customFieldTypes}}[Number({{customFieldIndex}})]", "isCode": true, "isUnsafe": false } },
+        { "id": "b_current_custom_field_required", "type": "Set variable", "options": { "variableId": "v_currentCustomFieldRequired", "type": "Custom", "expressionToEvaluate": "{{customFieldRequiredFlags}}[Number({{customFieldIndex}})]", "isCode": true, "isUnsafe": false } },
+        { "id": "b_current_custom_field_required_label", "type": "Set variable", "options": { "variableId": "v_currentCustomFieldRequiredLabel", "type": "Custom", "expressionToEvaluate": "{{customFieldRequiredLabels}}[Number({{customFieldIndex}})]", "isCode": true, "isUnsafe": false } },
+        { "id": "b_current_custom_field_placeholder", "type": "Set variable", "options": { "variableId": "v_currentCustomFieldPlaceholder", "type": "Custom", "expressionToEvaluate": "{{customFieldPlaceholders}}[Number({{customFieldIndex}})]", "isCode": true, "isUnsafe": false } },
+        { "id": "b_current_custom_field_options", "type": "Set variable", "outgoingEdgeId": "e_custom_field_prompt", "options": { "variableId": "v_currentCustomFieldOptions", "type": "Custom", "expressionToEvaluate": "const options = JSON.parse({{customFieldOptionsJson}}[Number({{customFieldIndex}})] || '[]'); return options.concat(String({{currentCustomFieldRequired}}) === 'false' ? ['Pular'] : []).concat(['Voltar']);", "isCode": true, "isUnsafe": false } }
+      ]
+    },
+    {
+      "id": "g_custom_field_prompt",
+      "title": "Pergunta atual",
+      "graphCoordinates": { "x": 4470, "y": -320 },
+      "blocks": [
+        { "id": "b_custom_field_prompt_text", "type": "text", "outgoingEdgeId": "e_custom_field_prompt_type", "content": { "richText": [{ "type": "p", "children": [{ "text": "{{currentCustomFieldLabel}}" }] }, { "type": "p", "children": [{ "text": "{{currentCustomFieldRequiredLabel}}" }] }] } }
+      ]
+    },
+    {
+      "id": "g_custom_field_type",
+      "title": "Selecionar tipo da pergunta",
+      "graphCoordinates": { "x": 4840, "y": -320 },
+      "blocks": [{
+        "id": "b_custom_field_type_condition",
+        "type": "Condition",
+        "outgoingEdgeId": "e_custom_field_type_error",
+        "items": [
+          { "id": "i_custom_type_text", "outgoingEdgeId": "e_custom_type_text", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_type_text", "variableId": "v_currentCustomFieldType", "comparisonOperator": "Equal to", "value": "TEXT" }] } },
+          { "id": "i_custom_type_textarea", "outgoingEdgeId": "e_custom_type_textarea", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_type_textarea", "variableId": "v_currentCustomFieldType", "comparisonOperator": "Equal to", "value": "TEXTAREA" }] } },
+          { "id": "i_custom_type_number", "outgoingEdgeId": "e_custom_type_number", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_type_number", "variableId": "v_currentCustomFieldType", "comparisonOperator": "Equal to", "value": "NUMBER" }] } },
+          { "id": "i_custom_type_date", "outgoingEdgeId": "e_custom_type_date", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_type_date", "variableId": "v_currentCustomFieldType", "comparisonOperator": "Equal to", "value": "DATE" }] } },
+          { "id": "i_custom_type_boolean", "outgoingEdgeId": "e_custom_type_boolean", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_type_boolean", "variableId": "v_currentCustomFieldType", "comparisonOperator": "Equal to", "value": "BOOLEAN" }] } },
+          { "id": "i_custom_type_select", "outgoingEdgeId": "e_custom_type_select", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_type_select", "variableId": "v_currentCustomFieldType", "comparisonOperator": "Equal to", "value": "SELECT" }] } }
+        ]
+      }]
+    },
+    {
+      "id": "g_custom_input_text",
+      "title": "Resposta curta",
+      "graphCoordinates": { "x": 5220, "y": -520 },
+      "blocks": [{ "id": "b_custom_input_text", "type": "text input", "outgoingEdgeId": "e_custom_answer_save", "options": { "variableId": "v_currentCustomFieldAnswer", "isLong": false, "labels": { "placeholder": "Digite sua resposta", "button": "Continuar" } } }]
+    },
+    {
+      "id": "g_custom_input_textarea",
+      "title": "Resposta longa",
+      "graphCoordinates": { "x": 5220, "y": -400 },
+      "blocks": [{ "id": "b_custom_input_textarea", "type": "text input", "outgoingEdgeId": "e_custom_answer_save_textarea", "options": { "variableId": "v_currentCustomFieldAnswer", "isLong": true, "labels": { "placeholder": "Digite sua resposta", "button": "Continuar" } } }]
+    },
+    {
+      "id": "g_custom_input_number",
+      "title": "Resposta numérica",
+      "graphCoordinates": { "x": 5220, "y": -280 },
+      "blocks": [{ "id": "b_custom_input_number", "type": "number input", "outgoingEdgeId": "e_custom_answer_save_number", "options": { "variableId": "v_currentCustomFieldAnswer", "locale": "pt-BR", "labels": { "placeholder": "Digite um número", "button": "Continuar" } } }]
+    },
+    {
+      "id": "g_custom_input_date",
+      "title": "Resposta de data",
+      "graphCoordinates": { "x": 5220, "y": -160 },
+      "blocks": [{ "id": "b_custom_input_date", "type": "date input", "outgoingEdgeId": "e_custom_answer_save_date", "options": { "variableId": "v_currentCustomFieldAnswer", "format": "yyyy-MM-dd", "hasTime": false, "isRange": false, "labels": { "button": "Continuar", "from": "Data", "to": "Data final" } } }]
+    },
+    {
+      "id": "g_custom_input_boolean",
+      "title": "Resposta sim ou não",
+      "graphCoordinates": { "x": 5220, "y": -40 },
+      "blocks": [{ "id": "b_custom_input_boolean", "type": "choice input", "outgoingEdgeId": "e_custom_answer_save_boolean", "items": [{ "id": "i_custom_boolean_yes", "content": "Sim" }, { "id": "i_custom_boolean_no", "content": "Não" }, { "id": "i_custom_boolean_skip", "content": "Pular", "displayCondition": { "isEnabled": true, "condition": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_boolean_optional", "variableId": "v_currentCustomFieldRequired", "comparisonOperator": "Equal to", "value": "false" }] } } }, { "id": "i_custom_boolean_back", "content": "Voltar" }], "options": { "variableId": "v_currentCustomFieldAnswer", "isMultipleChoice": false, "buttonLabel": "Continuar" } }]
+    },
+    {
+      "id": "g_custom_input_select",
+      "title": "Resposta de seleção",
+      "graphCoordinates": { "x": 5220, "y": 80 },
+      "blocks": [{ "id": "b_custom_input_select", "type": "choice input", "outgoingEdgeId": "e_custom_answer_save_select", "items": [{ "id": "i_custom_select_placeholder", "content": "Opção" }], "options": { "variableId": "v_currentCustomFieldAnswer", "dynamicVariableId": "v_currentCustomFieldOptions", "isMultipleChoice": false, "buttonLabel": "Continuar" } }]
+    },
+    {
+      "id": "g_custom_answer_route",
+      "title": "Tratar resposta da pergunta",
+      "graphCoordinates": { "x": 5480, "y": -320 },
+      "blocks": [
+        {
+          "id": "b_custom_answer_normalize_navigation",
+          "type": "Set variable",
+          "outgoingEdgeId": "e_custom_answer_normalized",
+          "options": { "variableId": "v_currentCustomFieldAnswer", "type": "Custom", "expressionToEvaluate": "const answer = String({{currentCustomFieldAnswer}}); if (['-9007199254740991', '1000-01-01'].includes(answer)) return 'Voltar'; if (['-9007199254740990', '1000-01-02'].includes(answer)) return 'Pular'; return answer;", "isCode": true, "isUnsafe": false }
+        },
+        {
+        "id": "b_custom_answer_route",
+        "type": "Condition",
+        "outgoingEdgeId": "e_custom_answer_route_save",
+        "items": [
+          { "id": "i_custom_answer_back", "outgoingEdgeId": "e_custom_answer_route_back", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_answer_back", "variableId": "v_currentCustomFieldAnswer", "comparisonOperator": "Equal to", "value": "Voltar" }] } },
+          { "id": "i_custom_answer_skip", "outgoingEdgeId": "e_custom_answer_route_skip", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_answer_skip_value", "variableId": "v_currentCustomFieldAnswer", "comparisonOperator": "Equal to", "value": "Pular" }, { "id": "c_custom_answer_skip_optional", "variableId": "v_currentCustomFieldRequired", "comparisonOperator": "Equal to", "value": "false" }] } },
+          { "id": "i_custom_answer_required_skip", "outgoingEdgeId": "e_custom_answer_required_retry", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_answer_required_skip_value", "variableId": "v_currentCustomFieldAnswer", "comparisonOperator": "Equal to", "value": "Pular" }] } }
+        ]
+        }
+      ]
+    },
+    {
+      "id": "g_custom_field_save",
+      "title": "Salvar resposta",
+      "graphCoordinates": { "x": 5600, "y": -320 },
+      "blocks": [
+        { "id": "b_custom_value_save", "type": "Set variable", "options": { "variableId": "v_customValuesJson", "type": "Custom", "expressionToEvaluate": "const values = {{customValuesJson}} ? JSON.parse({{customValuesJson}}) : []; return JSON.stringify(values.filter((item) => item.customFieldId !== {{currentCustomFieldId}}).concat([{ customFieldId: {{currentCustomFieldId}}, value: String({{currentCustomFieldAnswer}}) }]));", "isCode": true, "isUnsafe": false } },
+        { "id": "b_custom_summary_save", "type": "Set variable", "options": { "variableId": "v_customValuesSummarySection", "type": "Custom", "expressionToEvaluate": "const values = JSON.parse({{customValuesJson}} || '[]'); const lines = {{customFieldIds}}.map((id, index) => { const answer = values.find((item) => item.customFieldId === id); return answer && String(answer.value).trim() ? {{customFieldLabels}}[index] + ': ' + answer.value : null; }).filter(Boolean); return lines.length ? 'Dados adicionais:\\n' + lines.join('\\n') : '';", "isCode": true, "isUnsafe": false } },
+        { "id": "b_custom_index_advance", "type": "Set variable", "options": { "variableId": "v_customFieldIndex", "type": "Custom", "expressionToEvaluate": "Number({{customFieldIndex}}) + 1", "isCode": true, "isUnsafe": false } },
+        { "id": "b_custom_answer_clear", "type": "Set variable", "options": { "variableId": "v_currentCustomFieldAnswer", "type": "Custom", "expressionToEvaluate": "''", "isCode": false } },
+        { "id": "b_custom_next_condition", "type": "Condition", "outgoingEdgeId": "e_custom_fields_complete", "items": [{ "id": "i_custom_has_next", "outgoingEdgeId": "e_custom_field_next", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_has_next", "variableId": "v_customFieldIndex", "comparisonOperator": "Less than", "value": "{{customFieldCount}}" }] } }] }
+      ]
+    },
+    {
+      "id": "g_custom_field_skip",
+      "title": "Pular pergunta opcional",
+      "graphCoordinates": { "x": 5220, "y": 220 },
+      "blocks": [
+        { "id": "b_custom_value_skip", "type": "Set variable", "options": { "variableId": "v_customValuesJson", "type": "Custom", "expressionToEvaluate": "const values = {{customValuesJson}} ? JSON.parse({{customValuesJson}}) : []; return JSON.stringify(values.filter((item) => item.customFieldId !== {{currentCustomFieldId}}));", "isCode": true, "isUnsafe": false } },
+        { "id": "b_custom_summary_skip", "type": "Set variable", "options": { "variableId": "v_customValuesSummarySection", "type": "Custom", "expressionToEvaluate": "const values = JSON.parse({{customValuesJson}} || '[]'); const lines = {{customFieldIds}}.map((id, index) => { const answer = values.find((item) => item.customFieldId === id); return answer && String(answer.value).trim() ? {{customFieldLabels}}[index] + ': ' + answer.value : null; }).filter(Boolean); return lines.length ? 'Dados adicionais:\\n' + lines.join('\\n') : '';", "isCode": true, "isUnsafe": false } },
+        { "id": "b_custom_skip_advance", "type": "Set variable", "options": { "variableId": "v_customFieldIndex", "type": "Custom", "expressionToEvaluate": "Number({{customFieldIndex}}) + 1", "isCode": true, "isUnsafe": false } },
+        { "id": "b_custom_skip_condition", "type": "Condition", "outgoingEdgeId": "e_custom_skip_complete", "items": [{ "id": "i_custom_skip_has_next", "outgoingEdgeId": "e_custom_skip_next", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_skip_has_next", "variableId": "v_customFieldIndex", "comparisonOperator": "Less than", "value": "{{customFieldCount}}" }] } }] }
+      ]
+    },
+    {
+      "id": "g_custom_field_back",
+      "title": "Voltar na coleta",
+      "graphCoordinates": { "x": 4840, "y": 220 },
+      "blocks": [{ "id": "b_custom_back_condition", "type": "Condition", "outgoingEdgeId": "e_custom_back_slot", "items": [{ "id": "i_custom_back_previous", "outgoingEdgeId": "e_custom_back_previous", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_custom_back_previous", "variableId": "v_customFieldIndex", "comparisonOperator": "Greater than", "value": "0" }] } }] }]
+    },
+    {
+      "id": "g_custom_field_previous",
+      "title": "Pergunta anterior",
+      "graphCoordinates": { "x": 4470, "y": 220 },
+      "blocks": [{ "id": "b_custom_index_previous", "type": "Set variable", "outgoingEdgeId": "e_custom_previous_prepare", "options": { "variableId": "v_customFieldIndex", "type": "Custom", "expressionToEvaluate": "Number({{customFieldIndex}}) - 1", "isCode": true, "isUnsafe": false } }]
+    },
+    {
+      "id": "g_custom_field_error",
+      "title": "Tipo de pergunta indisponível",
+      "graphCoordinates": { "x": 5220, "y": 340 },
+      "blocks": [
+        { "id": "b_custom_field_error_text", "type": "text", "content": { "richText": [{ "type": "p", "children": [{ "text": "Não foi possível continuar com esta pergunta. Volte e tente novamente." }] }] } },
+        { "id": "b_custom_field_error_back", "type": "choice input", "items": [{ "id": "i_custom_field_error_back", "content": "Voltar", "outgoingEdgeId": "e_custom_field_error_back" }], "options": { "isMultipleChoice": false, "buttonLabel": "Continuar" } }
+      ]
+    },
+    {
+      "id": "g_identification_back",
+      "title": "Retorno da identificação",
+      "graphCoordinates": { "x": 4470, "y": 420 },
+      "blocks": [{ "id": "b_identification_back_condition", "type": "Condition", "outgoingEdgeId": "e_identification_back_slot", "items": [{ "id": "i_identification_back_fields", "outgoingEdgeId": "e_identification_back_fields", "content": { "logicalOperator": "AND", "comparisons": [{ "id": "c_identification_back_fields", "variableId": "v_customFieldCount", "comparisonOperator": "Greater than", "value": "0" }] } }] }]
+    },
+    {
+      "id": "g_custom_field_last",
+      "title": "Retornar à última pergunta",
+      "graphCoordinates": { "x": 4100, "y": 420 },
+      "blocks": [{ "id": "b_custom_index_last", "type": "Set variable", "outgoingEdgeId": "e_custom_last_prepare", "options": { "variableId": "v_customFieldIndex", "type": "Custom", "expressionToEvaluate": "Number({{customFieldCount}}) - 1", "isCode": true, "isUnsafe": false } }]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "from": {
+        "eventId": "evt_start"
+      },
+      "to": {
+        "groupId": "g_boot"
+      }
+    },
+    {
+      "id": "e_business_condition",
+      "from": {
+        "blockId": "b_business"
+      },
+      "to": {
+        "groupId": "g_boot",
+        "blockId": "b_business_condition"
+      }
+    },
+    {
+      "id": "e_business_ok",
+      "from": {
+        "blockId": "b_business_condition",
+        "itemId": "i_b_business_condition_match"
+      },
+      "to": {
+        "groupId": "g_welcome"
+      }
+    },
+    {
+      "id": "e_business_fail",
+      "from": {
+        "blockId": "b_business_condition"
+      },
+      "to": {
+        "groupId": "g_business_error"
+      }
+    },
+    {
+      "id": "e_services_condition",
+      "from": {
+        "blockId": "b_services"
+      },
+      "to": {
+        "groupId": "g_services",
+        "blockId": "b_services_condition"
+      }
+    },
+    {
+      "id": "e_services_ok",
+      "from": {
+        "blockId": "b_services_condition",
+        "itemId": "i_b_services_condition_match"
+      },
+      "to": {
+        "groupId": "g_choose_service"
+      }
+    },
+    {
+      "id": "e_services_empty",
+      "from": {
+        "blockId": "b_services_condition"
+      },
+      "to": {
+        "groupId": "g_no_services"
+      }
+    },
+    {
+      "id": "e_available_dates_condition",
+      "from": {
+        "blockId": "b_available_dates"
+      },
+      "to": {
+        "groupId": "g_available_dates",
+        "blockId": "b_available_dates_condition"
+      }
+    },
+    {
+      "id": "e_available_dates_choices",
+      "from": {
+        "blockId": "b_available_dates_condition",
+        "itemId": "i_available_dates_choices"
+      },
+      "to": {
+        "groupId": "g_choose_date"
+      }
+    },
+    {
+      "id": "e_available_dates_empty",
+      "from": {
+        "blockId": "b_available_dates_condition",
+        "itemId": "i_available_dates_empty"
+      },
+      "to": {
+        "groupId": "g_no_dates"
+      }
+    },
+    {
+      "id": "e_available_dates_error",
+      "from": {
+        "blockId": "b_available_dates_condition"
+      },
+      "to": {
+        "groupId": "g_business_error"
+      }
+    },
+    {
+      "id": "e_date_more",
+      "from": {
+        "blockId": "b_selected_date_condition",
+        "itemId": "i_selected_date_more"
+      },
+      "to": {
+        "groupId": "g_available_dates"
+      }
+    },
+    {
+      "id": "e_no_dates_service",
+      "from": {
+        "blockId": "b_no_dates_choice",
+        "itemId": "i_no_dates_service"
+      },
+      "to": {
+        "groupId": "g_services"
+      }
+    },
+    {
+      "id": "e_slots_condition",
+      "from": {
+        "blockId": "b_slots"
+      },
+      "to": {
+        "groupId": "g_slots",
+        "blockId": "b_slots_condition"
+      }
+    },
+    {
+      "id": "e_slots_ok",
+      "from": {
+        "blockId": "b_slots_condition",
+        "itemId": "i_b_slots_condition_match"
+      },
+      "to": {
+        "groupId": "g_choose_slot"
+      }
+    },
+    {
+      "id": "e_slots_empty",
+      "from": {
+        "blockId": "b_slots_condition"
+      },
+      "to": {
+        "groupId": "g_no_slots"
+      }
+    },
+    {
+      "id": "e_no_slots_back_router",
+      "from": {
+        "blockId": "b_no_slots_choice",
+        "itemId": "i_no_slots_back"
+      },
+      "to": {
+        "groupId": "g_no_slots",
+        "blockId": "b_no_slots_back_condition"
+      }
+    },
+    {
+      "id": "e_no_slots_date",
+      "from": {
+        "blockId": "b_no_slots_back_condition"
+      },
+      "to": {
+        "groupId": "g_choose_date"
+      }
+    },
+    {
+      "id": "e_identify_condition",
+      "from": {
+        "blockId": "b_identify"
+      },
+      "to": {
+        "groupId": "g_identify",
+        "blockId": "b_identify_condition"
+      }
+    },
+    {
+      "id": "e_summary_confirm",
+      "from": {
+        "blockId": "b_summary_choice",
+        "itemId": "i_summary_confirm"
+      },
+      "to": {
+        "groupId": "g_create_guard"
+      }
+    },
+    {
+      "id": "e_guard_existing",
+      "from": {
+        "blockId": "b_create_guard",
+        "itemId": "i_b_create_guard_match"
+      },
+      "to": {
+        "groupId": "g_final"
+      }
+    },
+    {
+      "id": "e_guard_create",
+      "from": {
+        "blockId": "b_create_guard"
+      },
+      "to": {
+        "groupId": "g_create"
+      }
+    },
+    {
+      "id": "e_create_condition",
+      "from": {
+        "blockId": "b_create"
+      },
+      "to": {
+        "groupId": "g_create",
+        "blockId": "b_create_condition"
+      }
+    },
+    {
+      "id": "e_create_ok",
+      "from": {
+        "blockId": "b_create_condition",
+        "itemId": "i_b_create_condition_match"
+      },
+      "to": {
+        "groupId": "g_final"
+      }
+    },
+    {
+      "id": "e_create_fail",
+      "from": {
+        "blockId": "b_create_condition"
+      },
+      "to": {
+        "groupId": "g_create_error"
+      }
+    },
+    {
+      "id": "e_create_retry_slots",
+      "from": {
+        "blockId": "b_create_error_choice",
+        "itemId": "i_create_retry_slots"
+      },
+      "to": {
+        "groupId": "g_slots"
+      }
+    },
+    {
+      "id": "e_create_back",
+      "from": {
+        "blockId": "b_create_error_choice",
+        "itemId": "i_create_back"
+      },
+      "to": {
+        "groupId": "g_summary"
+      }
+    },
+    {
+      "id": "e_final_confirmed",
+      "from": {
+        "blockId": "b_final_condition",
+        "itemId": "i_final_confirmed"
+      },
+      "to": {
+        "groupId": "g_direct"
+      }
+    },
+    {
+      "id": "e_final_requested",
+      "from": {
+        "blockId": "b_final_condition",
+        "itemId": "i_final_requested"
+      },
+      "to": {
+        "groupId": "g_requested"
+      }
+    },
+    {
+      "id": "e_final_fallback",
+      "from": {
+        "blockId": "b_final_condition"
+      },
+      "to": {
+        "groupId": "g_final_fallback"
+      }
+    },
+    {
+      "id": "e_date_periods",
+      "from": {
+        "blockId": "b_selected_date_condition"
+      },
+      "to": {
+        "groupId": "g_periods"
+      }
+    },
+    {
+      "id": "e_periods_condition",
+      "from": {
+        "blockId": "b_periods"
+      },
+      "to": {
+        "groupId": "g_periods",
+        "blockId": "b_periods_condition"
+      }
+    },
+    {
+      "id": "e_periods_empty",
+      "from": {
+        "blockId": "b_periods_condition"
+      },
+      "to": {
+        "groupId": "g_no_slots"
+      }
+    },
+    {
+      "id": "e_customer_phone_lookup",
+      "from": {
+        "blockId": "b_customer_phone_condition",
+        "itemId": "i_customer_phone_set"
+      },
+      "to": {
+        "groupId": "g_identify"
+      }
+    },
+    {
+      "id": "e_customer_phone_fallback",
+      "from": {
+        "blockId": "b_customer_phone_condition"
+      },
+      "to": {
+        "groupId": "g_customer"
+      }
+    },
+    {
+      "id": "e_customer_phone_after_input",
+      "from": {
+        "blockId": "b_phone_input"
+      },
+      "to": {
+        "groupId": "g_identify"
+      }
+    },
+    {
+      "id": "e_customer_found",
+      "from": {
+        "blockId": "b_identify_condition",
+        "itemId": "i_customer_found"
+      },
+      "to": {
+        "groupId": "g_customer_match"
+      }
+    },
+    {
+      "id": "e_identify_fail",
+      "from": {
+        "blockId": "b_identify_condition"
+      },
+      "to": {
+        "groupId": "g_identify_error"
+      }
+    },
+    {
+      "id": "e_customer_confirm",
+      "from": {
+        "blockId": "b_customer_match_choice",
+        "itemId": "i_customer_match_yes"
+      },
+      "to": {
+        "groupId": "g_customer_confirm"
+      }
+    },
+    {
+      "id": "e_customer_confirm_condition",
+      "from": {
+        "blockId": "b_customer_confirm"
+      },
+      "to": {
+        "groupId": "g_customer_confirm",
+        "blockId": "b_customer_confirm_condition"
+      }
+    },
+    {
+      "id": "e_customer_confirm_ok",
+      "from": {
+        "blockId": "b_customer_confirm_condition",
+        "itemId": "i_customer_confirm_ok"
+      },
+      "to": {
+        "groupId": "g_summary"
+      }
+    },
+    {
+      "id": "e_customer_confirm_error",
+      "from": {
+        "blockId": "b_customer_confirm_condition"
+      },
+      "to": {
+        "groupId": "g_identify_error"
+      }
+    },
+    {
+      "id": "e_customer_create_condition",
+      "from": {
+        "blockId": "b_customer_create"
+      },
+      "to": {
+        "groupId": "g_customer_new",
+        "blockId": "b_customer_create_condition"
+      }
+    },
+    {
+      "id": "e_customer_create_ok",
+      "from": {
+        "blockId": "b_customer_create_condition",
+        "itemId": "i_customer_create_ok"
+      },
+      "to": {
+        "groupId": "g_summary"
+      }
+    },
+    {
+      "id": "e_customer_create_error",
+      "from": {
+        "blockId": "b_customer_create_condition"
+      },
+      "to": {
+        "groupId": "g_identify_error"
+      }
+    },
+    {
+      "id": "e_no_slots_period",
+      "from": {
+        "blockId": "b_no_slots_back_condition",
+        "itemId": "i_no_slots_back_period"
+      },
+      "to": {
+        "groupId": "g_choose_period"
+      }
+    },
+    {
+      "id": "e_identify_retry",
+      "from": {
+        "blockId": "b_identify_error_choice",
+        "itemId": "i_identify_retry"
+      },
+      "to": {
+        "groupId": "g_customer_entry"
+      }
+    },
+    {
+      "id": "e_identify_service",
+      "from": {
+        "blockId": "b_identify_error_choice",
+        "itemId": "i_identify_back"
+      },
+      "to": {
+        "groupId": "g_identification_back"
+      }
+    },
+    {
+      "id": "e_welcome_intent",
+      "from": {
+        "blockId": "b_welcome"
+      },
+      "to": {
+        "groupId": "g_intent"
+      }
+    },
+    {
+      "id": "e_intent_booking",
+      "from": {
+        "blockId": "b_intent_choice",
+        "itemId": "i_intent_booking"
+      },
+      "to": {
+        "groupId": "g_categories"
+      }
+    },
+    {
+      "id": "e_intent_handoff",
+      "from": {
+        "blockId": "b_intent_choice",
+        "itemId": "i_intent_handoff"
+      },
+      "to": {
+        "groupId": "g_handoff"
+      }
+    },
+    {
+      "id": "e_intent_end",
+      "from": {
+        "blockId": "b_intent_choice",
+        "itemId": "i_intent_end"
+      },
+      "to": {
+        "groupId": "g_end_conversation"
+      }
+    },
+    {
+      "id": "e_categories_condition",
+      "from": {
+        "blockId": "b_categories"
+      },
+      "to": {
+        "groupId": "g_categories",
+        "blockId": "b_categories_condition"
+      }
+    },
+    {
+      "id": "e_categories_available",
+      "from": {
+        "blockId": "b_categories_condition",
+        "itemId": "i_categories_available"
+      },
+      "to": {
+        "groupId": "g_choose_category"
+      }
+    },
+    {
+      "id": "e_categories_empty",
+      "from": {
+        "blockId": "b_categories_condition"
+      },
+      "to": {
+        "groupId": "g_no_categories"
+      }
+    },
+    {
+      "id": "e_category_services",
+      "from": {
+        "blockId": "b_category_navigation"
+      },
+      "to": {
+        "groupId": "g_services"
+      }
+    },
+    {
+      "id": "e_category_back",
+      "from": {
+        "blockId": "b_category_navigation",
+        "itemId": "i_category_back"
+      },
+      "to": {
+        "groupId": "g_intent"
+      }
+    },
+    {
+      "id": "e_no_categories_back",
+      "from": {
+        "blockId": "b_no_categories_back",
+        "itemId": "i_no_categories_back"
+      },
+      "to": {
+        "groupId": "g_intent"
+      }
+    },
+    {
+      "id": "e_service_dates",
+      "from": {
+        "blockId": "b_service_navigation"
+      },
+      "to": {
+        "groupId": "g_available_dates"
+      }
+    },
+    {
+      "id": "e_service_back",
+      "from": {
+        "blockId": "b_service_navigation",
+        "itemId": "i_service_back"
+      },
+      "to": {
+        "groupId": "g_choose_category"
+      }
+    },
+    {
+      "id": "e_date_back",
+      "from": {
+        "blockId": "b_selected_date_condition",
+        "itemId": "i_selected_date_back"
+      },
+      "to": {
+        "groupId": "g_choose_service"
+      }
+    },
+    {
+      "id": "e_periods_multiple",
+      "from": {
+        "blockId": "b_periods_condition",
+        "itemId": "i_periods_multiple"
+      },
+      "to": {
+        "groupId": "g_choose_period"
+      }
+    },
+    {
+      "id": "e_periods_single",
+      "from": {
+        "blockId": "b_periods_condition",
+        "itemId": "i_periods_single"
+      },
+      "to": {
+        "groupId": "g_slots"
+      }
+    },
+    {
+      "id": "e_period_slots",
+      "from": {
+        "blockId": "b_period_navigation"
+      },
+      "to": {
+        "groupId": "g_slots"
+      }
+    },
+    {
+      "id": "e_period_back",
+      "from": {
+        "blockId": "b_period_navigation",
+        "itemId": "i_period_back"
+      },
+      "to": {
+        "groupId": "g_choose_date"
+      }
+    },
+    {
+      "id": "e_slot_customer_entry",
+      "from": {
+        "blockId": "b_slot_navigation"
+      },
+      "to": {
+        "groupId": "g_custom_fields"
+      }
+    },
+    {
+      "id": "e_slot_back_period",
+      "from": {
+        "blockId": "b_slot_navigation",
+        "itemId": "i_slot_back_period"
+      },
+      "to": {
+        "groupId": "g_choose_period"
+      }
+    },
+    {
+      "id": "e_slot_back_date",
+      "from": {
+        "blockId": "b_slot_navigation",
+        "itemId": "i_slot_back_date"
+      },
+      "to": {
+        "groupId": "g_choose_date"
+      }
+    },
+    {
+      "id": "e_customer_new_required",
+      "from": {
+        "blockId": "b_identify_condition",
+        "itemId": "i_customer_new_required"
+      },
+      "to": {
+        "groupId": "g_customer_new"
+      }
+    },
+    {
+      "id": "e_customer_new",
+      "from": {
+        "blockId": "b_customer_match_choice",
+        "itemId": "i_customer_match_no"
+      },
+      "to": {
+        "groupId": "g_customer_rejected_name"
+      }
+    },
+    {
+      "id": "e_customer_match_back",
+      "from": {
+        "blockId": "b_customer_match_choice",
+        "itemId": "i_customer_match_back"
+      },
+      "to": {
+        "groupId": "g_identification_back"
+      }
+    },
+    {
+      "id": "e_customer_new_continue",
+      "from": {
+        "blockId": "b_customer_rejected_name_condition"
+      },
+      "to": {
+        "groupId": "g_customer_new",
+        "blockId": "b_customer_create"
+      }
+    },
+    {
+      "id": "e_customer_new_back",
+      "from": {
+        "blockId": "b_customer_rejected_name_condition",
+        "itemId": "i_customer_new_back"
+      },
+      "to": {
+        "groupId": "g_customer_match"
+      }
+    },
+    {
+      "id": "e_customer_rejected_name_condition",
+      "from": {
+        "blockId": "b_customer_rejected_name_input"
+      },
+      "to": {
+        "groupId": "g_customer_rejected_name",
+        "blockId": "b_customer_rejected_name_condition"
+      }
+    },
+    {
+      "id": "e_summary_back",
+      "from": {
+        "blockId": "b_summary_choice",
+        "itemId": "i_summary_back"
+      },
+      "to": {
+        "groupId": "g_customer_entry"
+      }
+    },
+    {
+      "id": "e_custom_fields_condition",
+      "from": { "blockId": "b_custom_fields" },
+      "to": { "groupId": "g_custom_fields", "blockId": "b_custom_fields_condition" }
+    },
+    {
+      "id": "e_custom_fields_available",
+      "from": { "blockId": "b_custom_fields_condition", "itemId": "i_custom_fields_available" },
+      "to": { "groupId": "g_custom_field_prepare" }
+    },
+    {
+      "id": "e_custom_fields_empty",
+      "from": { "blockId": "b_custom_fields_condition" },
+      "to": { "groupId": "g_customer_notes" }
+    },
+    {
+      "id": "e_custom_field_prompt",
+      "from": { "blockId": "b_current_custom_field_options" },
+      "to": { "groupId": "g_custom_field_prompt" }
+    },
+    {
+      "id": "e_custom_field_prompt_type",
+      "from": { "blockId": "b_custom_field_prompt_text" },
+      "to": { "groupId": "g_custom_field_type" }
+    },
+    {
+      "id": "e_custom_type_text",
+      "from": { "blockId": "b_custom_field_type_condition", "itemId": "i_custom_type_text" },
+      "to": { "groupId": "g_custom_input_text" }
+    },
+    {
+      "id": "e_custom_type_textarea",
+      "from": { "blockId": "b_custom_field_type_condition", "itemId": "i_custom_type_textarea" },
+      "to": { "groupId": "g_custom_input_textarea" }
+    },
+    {
+      "id": "e_custom_type_number",
+      "from": { "blockId": "b_custom_field_type_condition", "itemId": "i_custom_type_number" },
+      "to": { "groupId": "g_custom_input_number" }
+    },
+    {
+      "id": "e_custom_type_date",
+      "from": { "blockId": "b_custom_field_type_condition", "itemId": "i_custom_type_date" },
+      "to": { "groupId": "g_custom_input_date" }
+    },
+    {
+      "id": "e_custom_type_boolean",
+      "from": { "blockId": "b_custom_field_type_condition", "itemId": "i_custom_type_boolean" },
+      "to": { "groupId": "g_custom_input_boolean" }
+    },
+    {
+      "id": "e_custom_type_select",
+      "from": { "blockId": "b_custom_field_type_condition", "itemId": "i_custom_type_select" },
+      "to": { "groupId": "g_custom_input_select" }
+    },
+    {
+      "id": "e_custom_field_type_error",
+      "from": { "blockId": "b_custom_field_type_condition" },
+      "to": { "groupId": "g_custom_field_error" }
+    },
+    {
+      "id": "e_custom_answer_save",
+      "from": { "blockId": "b_custom_input_text" },
+      "to": { "groupId": "g_custom_answer_route" }
+    },
+    {
+      "id": "e_custom_answer_save_textarea",
+      "from": { "blockId": "b_custom_input_textarea" },
+      "to": { "groupId": "g_custom_answer_route" }
+    },
+    {
+      "id": "e_custom_answer_save_number",
+      "from": { "blockId": "b_custom_input_number" },
+      "to": { "groupId": "g_custom_answer_route" }
+    },
+    {
+      "id": "e_custom_answer_save_date",
+      "from": { "blockId": "b_custom_input_date" },
+      "to": { "groupId": "g_custom_answer_route" }
+    },
+    {
+      "id": "e_custom_answer_save_boolean",
+      "from": { "blockId": "b_custom_input_boolean" },
+      "to": { "groupId": "g_custom_answer_route" }
+    },
+    {
+      "id": "e_custom_answer_save_select",
+      "from": { "blockId": "b_custom_input_select" },
+      "to": { "groupId": "g_custom_answer_route" }
+    },
+    {
+      "id": "e_custom_answer_normalized",
+      "from": { "blockId": "b_custom_answer_normalize_navigation" },
+      "to": { "groupId": "g_custom_answer_route", "blockId": "b_custom_answer_route" }
+    },
+    {
+      "id": "e_custom_answer_route_save",
+      "from": { "blockId": "b_custom_answer_route" },
+      "to": { "groupId": "g_custom_field_save" }
+    },
+    {
+      "id": "e_custom_answer_route_back",
+      "from": { "blockId": "b_custom_answer_route", "itemId": "i_custom_answer_back" },
+      "to": { "groupId": "g_custom_field_back" }
+    },
+    {
+      "id": "e_custom_answer_route_skip",
+      "from": { "blockId": "b_custom_answer_route", "itemId": "i_custom_answer_skip" },
+      "to": { "groupId": "g_custom_field_skip" }
+    },
+    {
+      "id": "e_custom_answer_required_retry",
+      "from": { "blockId": "b_custom_answer_route", "itemId": "i_custom_answer_required_skip" },
+      "to": { "groupId": "g_custom_field_prepare" }
+    },
+    {
+      "id": "e_custom_field_next",
+      "from": { "blockId": "b_custom_next_condition", "itemId": "i_custom_has_next" },
+      "to": { "groupId": "g_custom_field_prepare" }
+    },
+    {
+      "id": "e_custom_fields_complete",
+      "from": { "blockId": "b_custom_next_condition" },
+      "to": { "groupId": "g_customer_notes" }
+    },
+    {
+      "id": "e_custom_skip_next",
+      "from": { "blockId": "b_custom_skip_condition", "itemId": "i_custom_skip_has_next" },
+      "to": { "groupId": "g_custom_field_prepare" }
+    },
+    {
+      "id": "e_custom_skip_complete",
+      "from": { "blockId": "b_custom_skip_condition" },
+      "to": { "groupId": "g_customer_notes" }
+    },
+    {
+      "id": "e_customer_notes_condition",
+      "from": { "blockId": "b_customer_notes_input" },
+      "to": { "groupId": "g_customer_notes", "blockId": "b_customer_notes_condition" }
+    },
+    {
+      "id": "e_customer_notes_continue",
+      "from": { "blockId": "b_customer_notes_condition" },
+      "to": { "groupId": "g_customer_entry" }
+    },
+    {
+      "id": "e_customer_notes_back",
+      "from": { "blockId": "b_customer_notes_condition", "itemId": "i_customer_notes_back" },
+      "to": { "groupId": "g_customer_notes_back" }
+    },
+    {
+      "id": "e_customer_notes_skip",
+      "from": { "blockId": "b_customer_notes_condition", "itemId": "i_customer_notes_skip" },
+      "to": { "groupId": "g_customer_notes_skip" }
+    },
+    {
+      "id": "e_customer_notes_skip_continue",
+      "from": { "blockId": "b_customer_notes_clear" },
+      "to": { "groupId": "g_customer_entry" }
+    },
+    {
+      "id": "e_customer_notes_back_custom_field",
+      "from": { "blockId": "b_customer_notes_back_condition", "itemId": "i_customer_notes_back_custom_field" },
+      "to": { "groupId": "g_custom_field_last" }
+    },
+    {
+      "id": "e_customer_notes_back_slot",
+      "from": { "blockId": "b_customer_notes_back_condition" },
+      "to": { "groupId": "g_choose_slot" }
+    },
+    {
+      "id": "e_custom_back_previous",
+      "from": { "blockId": "b_custom_back_condition", "itemId": "i_custom_back_previous" },
+      "to": { "groupId": "g_custom_field_previous" }
+    },
+    {
+      "id": "e_custom_back_slot",
+      "from": { "blockId": "b_custom_back_condition" },
+      "to": { "groupId": "g_choose_slot" }
+    },
+    {
+      "id": "e_custom_previous_prepare",
+      "from": { "blockId": "b_custom_index_previous" },
+      "to": { "groupId": "g_custom_field_prepare" }
+    },
+    {
+      "id": "e_custom_field_error_back",
+      "from": { "blockId": "b_custom_field_error_back", "itemId": "i_custom_field_error_back" },
+      "to": { "groupId": "g_choose_slot" }
+    },
+    {
+      "id": "e_identification_back_fields",
+      "from": { "blockId": "b_identification_back_condition", "itemId": "i_identification_back_fields" },
+      "to": { "groupId": "g_custom_field_last" }
+    },
+    {
+      "id": "e_identification_back_slot",
+      "from": { "blockId": "b_identification_back_condition" },
+      "to": { "groupId": "g_choose_slot" }
+    },
+    {
+      "id": "e_custom_last_prepare",
+      "from": { "blockId": "b_custom_index_last" },
+      "to": { "groupId": "g_custom_field_prepare" }
+    }
+  ],
+  "variables": [
+    {
+      "id": "v_phone",
+      "name": "phone",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_apiBaseUrl",
+      "name": "apiBaseUrl",
+      "isSessionVariable": true,
+      "value": ""
+    },
+    {
+      "id": "v_tenantSlug",
+      "name": "tenantSlug",
+      "isSessionVariable": true,
+      "value": ""
+    },
+    {
+      "id": "v_typebotApiKey",
+      "name": "typebotApiKey",
+      "isSessionVariable": true,
+      "value": ""
+    },
+    {
+      "id": "v_httpStatus",
+      "name": "httpStatus",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_apiErrorCode",
+      "name": "apiErrorCode",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_tenantName",
+      "name": "tenantName",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_tenantWhatsapp",
+      "name": "tenantWhatsapp",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_serviceNames",
+      "name": "serviceNames",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_serviceIds",
+      "name": "serviceIds",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_serviceBookingModes",
+      "name": "serviceBookingModes",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_serviceCount",
+      "name": "serviceCount",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedServiceName",
+      "name": "selectedServiceName",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedServiceId",
+      "name": "selectedServiceId",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedBookingMode",
+      "name": "selectedBookingMode",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_availableDateLabels",
+      "name": "availableDateLabels",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_availableDateValues",
+      "name": "availableDateValues",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_availableDateChoiceCount",
+      "name": "availableDateChoiceCount",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_nextStartDate",
+      "name": "nextStartDate",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedDateLabel",
+      "name": "selectedDateLabel",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedDate",
+      "name": "selectedDate",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedDateFormatted",
+      "name": "selectedDateFormatted",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_slotLabels",
+      "name": "slotLabels",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_slotStartsAt",
+      "name": "slotStartsAt",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_slotCount",
+      "name": "slotCount",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedSlotLabel",
+      "name": "selectedSlotLabel",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedSlotStartsAt",
+      "name": "selectedSlotStartsAt",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customerName",
+      "name": "customerName",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customerNotes",
+      "name": "customerNotes",
+      "isSessionVariable": false,
+      "value": ""
+    },
+    {
+      "id": "v_customerNotesSummary",
+      "name": "customerNotesSummary",
+      "isSessionVariable": false,
+      "value": ""
+    },
+    {
+      "id": "v_customerId",
+      "name": "customerId",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_sessionId",
+      "name": "sessionId",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_appointmentId",
+      "name": "appointmentId",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_appointmentStatus",
+      "name": "appointmentStatus",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_periodLabels",
+      "name": "periodLabels",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_periodValues",
+      "name": "periodValues",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_periodCount",
+      "name": "periodCount",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedPeriodLabel",
+      "name": "selectedPeriodLabel",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedPeriod",
+      "name": "selectedPeriod",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customerLookupStatus",
+      "name": "customerLookupStatus",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_matchedCustomerName",
+      "name": "matchedCustomerName",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_tenantWhatsappUrl",
+      "name": "tenantWhatsappUrl",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_handoffRequested",
+      "name": "handoffRequested",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_categoryLabels",
+      "name": "categoryLabels",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_categoryIds",
+      "name": "categoryIds",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_categoryCount",
+      "name": "categoryCount",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedCategoryLabel",
+      "name": "selectedCategoryLabel",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_selectedCategoryId",
+      "name": "selectedCategoryId",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customFieldCount",
+      "name": "customFieldCount",
+      "isSessionVariable": false,
+      "value": "0"
+    },
+    {
+      "id": "v_customFieldIndex",
+      "name": "customFieldIndex",
+      "isSessionVariable": false,
+      "value": "0"
+    },
+    {
+      "id": "v_customFieldIds",
+      "name": "customFieldIds",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customFieldLabels",
+      "name": "customFieldLabels",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customFieldTypes",
+      "name": "customFieldTypes",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customFieldRequiredFlags",
+      "name": "customFieldRequiredFlags",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customFieldRequiredLabels",
+      "name": "customFieldRequiredLabels",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customFieldPlaceholders",
+      "name": "customFieldPlaceholders",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customFieldOptionsJson",
+      "name": "customFieldOptionsJson",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_currentCustomFieldId",
+      "name": "currentCustomFieldId",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_currentCustomFieldLabel",
+      "name": "currentCustomFieldLabel",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_currentCustomFieldType",
+      "name": "currentCustomFieldType",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_currentCustomFieldRequired",
+      "name": "currentCustomFieldRequired",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_currentCustomFieldRequiredLabel",
+      "name": "currentCustomFieldRequiredLabel",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_currentCustomFieldPlaceholder",
+      "name": "currentCustomFieldPlaceholder",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_currentCustomFieldOptions",
+      "name": "currentCustomFieldOptions",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_currentCustomFieldAnswer",
+      "name": "currentCustomFieldAnswer",
+      "isSessionVariable": false
+    },
+    {
+      "id": "v_customValuesJson",
+      "name": "customValuesJson",
+      "isSessionVariable": false,
+      "value": "[]"
+    },
+    {
+      "id": "v_appointmentRequestBody",
+      "name": "appointmentRequestBody",
+      "isSessionVariable": false,
+      "value": ""
+    },
+    {
+      "id": "v_customValuesSummarySection",
+      "name": "customValuesSummarySection",
+      "isSessionVariable": false,
+      "value": ""
+    }
+  ],
+  "theme": {
+    "general": {
+      "font": "Inter",
+      "background": {
+        "type": "Color",
+        "content": "#F8FAFC"
+      }
+    },
+    "chat": {
+      "hostBubbles": {
+        "backgroundColor": "#F1F5F9",
+        "color": "#0F172A"
+      },
+      "guestBubbles": {
+        "backgroundColor": "#0F766E",
+        "color": "#FFFFFF"
+      },
+      "buttons": {
+        "backgroundColor": "#0F766E",
+        "color": "#FFFFFF"
+      },
+      "inputs": {
+        "backgroundColor": "#FFFFFF",
+        "color": "#0F172A",
+        "placeholderColor": "#64748B"
+      }
+    }
+  },
+  "selectedThemeTemplateId": null,
+  "settings": {
+    "general": {
+      "isBrandingEnabled": true,
+      "isInputPrefillEnabled": true,
+      "isHideQueryParamsEnabled": true,
+      "isNewResultOnRefreshEnabled": false,
+      "rememberUser": {
+        "isEnabled": false
+      }
+    },
+    "typingEmulation": {
+      "enabled": true,
+      "speed": 300,
+      "maxDelay": 1.5
+    },
+    "metadata": {
+      "title": "Agendaí — Agendamento",
+      "description": "Fluxo conversacional de agendamento do Agendaí.",
+      "allowIndexing": false
+    },
+    "publicShare": {
+      "isEnabled": false
+    }
+  },
+  "createdAt": "2026-07-14T00:00:00.000Z",
+  "updatedAt": "2026-07-14T00:00:00.000Z",
+  "icon": "📅",
+  "folderId": null,
+  "publicId": null,
+  "customDomain": null,
+  "workspaceId": "proWorkspace",
+  "resultsTablePreferences": null,
+  "isArchived": false,
+  "isClosed": false,
+  "whatsAppCredentialsId": null,
+  "riskLevel": null,
+  "spaceId": null
+}

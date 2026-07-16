@@ -18,11 +18,17 @@ interface ServiceCategorySectionProps {
     services: Service[];
   };
   tenantSlug: string;
+  disabled?: boolean;
+  pendingServiceId?: string | null;
+  onSelectService?: (serviceId: string) => void;
 }
 
 export function ServiceCategorySection({
   category,
   tenantSlug,
+  disabled = false,
+  pendingServiceId,
+  onSelectService,
 }: ServiceCategorySectionProps) {
   if (!category.services.length) return null;
 
@@ -43,6 +49,9 @@ export function ServiceCategorySection({
             service={service}
             tenantSlug={tenantSlug}
             divided={index > 0}
+            disabled={disabled}
+            pending={pendingServiceId === service.id}
+            onSelect={onSelectService}
           />
         ))}
       </div>

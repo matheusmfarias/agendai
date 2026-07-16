@@ -1,5 +1,9 @@
 # Tratamento de Erros no Typebot
 
+> **Documento histórico.** O blueprint importável usa branches seguros por
+> status HTTP e nunca mostra `code` ou `message` ao cliente. Consulte
+> [`flow-blueprint.md`](./flow-blueprint.md).
+
 Como o Typebot deve tratar cada código de erro retornado pela API do AgendaZap (Phase 06).
 
 ---

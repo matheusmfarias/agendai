@@ -1,14 +1,12 @@
-import { calculateAppointmentEnd } from "@/features/appointments/appointment-rules";
 import {
-  assertAvailability,
-  assertNoSlotConflict,
   getAvailableSlots,
-  publicStatusForBookingMode,
 } from "@/features/booking-core/availability";
+import { normalizeBrazilianCustomerPhone } from "@/features/booking-core/phone";
 import {
-  normalizePhone,
-  validateCustomFields,
-} from "@/features/booking-core/custom-fields";
+  EXTERNAL_BOOKING_MESSAGES,
+  persistExternalAppointment,
+  prepareExternalAppointment,
+} from "@/features/booking-core/external-appointment-service";
 import {
   isTenantBookableForPublicLink,
   canCreatePublicAppointmentForTenant,
@@ -18,23 +16,13 @@ import { createProviderNotification } from "@/features/provider-notifications/no
 import type { CreateProviderNotificationInput } from "@/features/provider-notifications/notification-service";
 import { getSubscriptionPolicy } from "@/features/subscriptions/subscription-policy";
 import type { PublicBookingInput } from "@/features/public-booking/public-booking-schemas";
-import {
-  enqueueAppointmentConfirmation,
-  enqueueAppointmentRequested,
-} from "@/features/whatsapp/whatsapp-outbox-service";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export const PUBLIC_BOOKING_UNAVAILABLE_MESSAGE =
   "Este serviço de agendamento está temporariamente indisponível. Entre em contato diretamente com o estabelecimento.";
 
-export const PUBLIC_BOOKING_MESSAGES = {
-  DIRECT: "Agendamento confirmado com sucesso.",
-  REQUIRES_CONFIRMATION:
-    "Sua solicitação foi enviada e aguarda confirmação do prestador.",
-  INFORMATIONAL:
-    "Sua solicitação foi enviada. O prestador entrará em contato para dar continuidade.",
-} as const;
+export const PUBLIC_BOOKING_MESSAGES = EXTERNAL_BOOKING_MESSAGES;
 
 function notificationDateParts(value: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -72,28 +60,60 @@ export type PublicReviewSummary = Awaited<
   ReturnType<typeof getPublicReviewSummary>
 >;
 
-export async function getPublicTenantBySlug(slug: string) {
-  return prisma.tenant.findUnique({
-    where: { slug },
-    include: {
-      subscription: {
-        include: {
-          plan: {
-            select: { publicLinkEnabled: true },
-          },
-        },
-      },
-      serviceCategories: {
+const publicTenantSelect = {
+  id: true,
+  name: true,
+  slug: true,
+  publicDisplayName: true,
+  logoUrl: true,
+  description: true,
+  address: true,
+  neighborhood: true,
+  addressComplement: true,
+  city: true,
+  state: true,
+  timezone: true,
+  defaultAppointmentDuration: true,
+  defaultSlotInterval: true,
+  minBookingNoticeMinutes: true,
+  maxBookingAdvanceDays: true,
+  status: true,
+  publicLinkActive: true,
+  subscription: {
+    select: {
+      status: true,
+      expiresAt: true,
+      plan: { select: { publicLinkEnabled: true } },
+    },
+  },
+  serviceCategories: {
+    where: { isActive: true },
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      services: {
         where: { isActive: true },
         orderBy: [{ position: "asc" }, { name: "asc" }],
-        include: {
-          services: {
-            where: { isActive: true },
-            orderBy: [{ position: "asc" }, { name: "asc" }],
-          },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          durationMinutes: true,
+          priceType: true,
+          priceValue: true,
+          bookingMode: true,
         },
       },
     },
+  },
+} satisfies Prisma.TenantSelect;
+
+export async function getPublicTenantBySlug(slug: string) {
+  return prisma.tenant.findUnique({
+    where: { slug },
+    select: publicTenantSelect,
   });
 }
 
@@ -106,53 +126,16 @@ export async function getPublicPageData(slug: string) {
   return { available: true as const, tenant };
 }
 
-function publicCustomerName(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "Cliente";
-  if (parts.length === 1) return parts[0];
-  return `${parts[0]} ${parts[1][0].toUpperCase()}.`;
-}
-
-export async function getPublicReviewSummary(slug: string) {
-  const tenant = await prisma.tenant.findUnique({
-    where: { slug },
-    select: { id: true },
+export async function getPublicReviewSummary(tenantId: string) {
+  const aggregate = await prisma.appointmentReview.aggregate({
+    where: {
+      tenantId,
+      rating: { gte: 1, lte: 5 },
+      appointment: { status: "FINISHED", tenantId },
+    },
+    _avg: { rating: true },
+    _count: { rating: true },
   });
-  if (!tenant) {
-    return {
-      count: 0,
-      average: null as number | null,
-      recent: [],
-    };
-  }
-
-  const [aggregate, recent] = await Promise.all([
-    prisma.appointmentReview.aggregate({
-      where: {
-        tenantId: tenant.id,
-        rating: { gte: 1, lte: 5 },
-        appointment: { status: "FINISHED", tenantId: tenant.id },
-      },
-      _avg: { rating: true },
-      _count: { rating: true },
-    }),
-    prisma.appointmentReview.findMany({
-      where: {
-        tenantId: tenant.id,
-        rating: { gte: 1, lte: 5 },
-        comment: { not: null },
-        appointment: { status: "FINISHED", tenantId: tenant.id },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 3,
-      select: {
-        id: true,
-        rating: true,
-        comment: true,
-        customerUser: { select: { name: true } },
-      },
-    }),
-  ]);
 
   return {
     count: aggregate._count.rating,
@@ -160,12 +143,6 @@ export async function getPublicReviewSummary(slug: string) {
       aggregate._avg.rating === null
         ? null
         : Math.round(aggregate._avg.rating * 10) / 10,
-    recent: recent.map((review) => ({
-      id: review.id,
-      rating: review.rating,
-      comment: review.comment,
-      customerName: publicCustomerName(review.customerUser.name),
-    })),
   };
 }
 
@@ -180,25 +157,13 @@ export async function getPublicBookingData(slug: string, serviceId?: string) {
     })),
   );
   const service = serviceId
-    ? await prisma.service.findFirst({
-        where: {
-          id: serviceId,
-          tenantId: pageData.tenant.id,
-          isActive: true,
-          category: { isActive: true },
-        },
-        include: {
-          category: { select: { name: true } },
-          customFields: {
-            where: { isActive: true },
-            orderBy: [{ position: "asc" }, { label: "asc" }],
-          },
-        },
-      })
+    ? (services.find((candidate) => candidate.id === serviceId) ?? null)
     : null;
 
   const slots = service
-    ? await getAvailableSlots(pageData.tenant.id, service.id)
+    ? await getAvailableSlots(pageData.tenant.id, service.id, {
+        context: { tenant: pageData.tenant, service },
+      })
     : [];
 
   return {
@@ -206,6 +171,56 @@ export async function getPublicBookingData(slug: string, serviceId?: string) {
     tenant: pageData.tenant,
     services,
     selectedService: service,
+    slots,
+  };
+}
+
+export async function getPublicBookingReviewData(
+  slug: string,
+  serviceId: string,
+  startsAt: string,
+) {
+  const pageData = await getPublicPageData(slug);
+  if (!pageData.available) return pageData;
+
+  const service = pageData.tenant.serviceCategories
+    .flatMap((category) => category.services)
+    .find((candidate) => candidate.id === serviceId);
+  if (!service) {
+    return {
+      available: true as const,
+      tenant: pageData.tenant,
+      selectedService: null,
+      slots: [],
+    };
+  }
+
+  const [customFields, slots] = await Promise.all([
+    prisma.customField.findMany({
+      where: {
+        tenantId: pageData.tenant.id,
+        serviceId: service.id,
+        isActive: true,
+      },
+      orderBy: [{ position: "asc" }, { label: "asc" }],
+      select: {
+        id: true,
+        label: true,
+        fieldType: true,
+        options: true,
+        isRequired: true,
+      },
+    }),
+    getAvailableSlots(pageData.tenant.id, service.id, {
+      context: { tenant: pageData.tenant, service },
+      dates: [startsAt.slice(0, 10)],
+    }),
+  ]);
+
+  return {
+    available: true as const,
+    tenant: pageData.tenant,
+    selectedService: { ...service, customFields },
     slots,
   };
 }
@@ -261,41 +276,6 @@ export async function createPublicBooking(
         throw new Error(PUBLIC_BOOKING_UNAVAILABLE_MESSAGE);
       }
 
-      const service = await tx.service.findFirst({
-        where: {
-          id: input.serviceId,
-          tenantId: tenant.id,
-          isActive: true,
-          category: { isActive: true },
-        },
-        include: {
-          category: { select: { name: true } },
-          customFields: {
-            where: { isActive: true },
-            orderBy: [{ position: "asc" }, { label: "asc" }],
-          },
-        },
-      });
-      if (!service) {
-        throw new Error("Serviço indisponível para agendamento.");
-      }
-
-      const customValues = validateCustomFields(
-        service.customFields.map((field) => ({
-          id: field.id,
-          label: field.label,
-          fieldType: field.fieldType,
-          isRequired: field.isRequired,
-          options: field.options,
-        })),
-        input.customFields,
-      );
-      if (!customValues.ok) {
-        const error = new Error("Revise os campos personalizados.");
-        Object.assign(error, { fieldErrors: customValues.fieldErrors });
-        throw error;
-      }
-
       const startsAt = parseLocalDateTimeInTimezone(
         input.startsAt,
         tenant.timezone,
@@ -304,12 +284,13 @@ export async function createPublicBooking(
         throw new Error("Selecione um horário válido.");
       }
 
-      const endsAt = calculateAppointmentEnd(
+      const prepared = await prepareExternalAppointment(tx, {
+        tenantId: tenant.id,
+        serviceId: input.serviceId,
         startsAt,
-        service.durationMinutes,
-      );
-      await assertAvailability(tx, tenant.id, startsAt, endsAt);
-      await assertNoSlotConflict(tx, tenant.id, startsAt, endsAt);
+        customFields: input.customFields,
+      });
+      const { service, status } = prepared;
 
       const findCustomerUser = tx.user.findFirst as unknown as (
         args: unknown,
@@ -333,7 +314,7 @@ export async function createPublicBooking(
         );
       }
 
-      const phone = normalizePhone(customerUser.phone ?? "");
+      const phone = normalizeBrazilianCustomerPhone(customerUser.phone);
       if (!phone) {
         throw new Error(
           "Complete seu cadastro com telefone para concluir o agendamento.",
@@ -389,51 +370,13 @@ export async function createPublicBooking(
             },
           });
 
-      const status = publicStatusForBookingMode(service.bookingMode);
-      const createAppointment = tx.appointment.create as unknown as (
-        args: unknown,
-      ) => Promise<{ id: string }>;
-      const appointment = await createAppointment({
-        data: {
-          tenant: { connect: { id: tenant.id } },
-          customer: { connect: { id: customer.id } },
-          customerUser: { connect: { id: customerUser.id } },
-          service: { connect: { id: service.id } },
-          origin: "PUBLIC_LINK",
-          status,
-          startsAt,
-          endsAt,
-          customerNotes: input.customerNotes,
-          estimatedPrice: service.priceValue,
-        },
+      const { appointment } = await persistExternalAppointment(tx, {
+        prepared,
+        channel: "PUBLIC_LINK",
+        customer,
+        customerUserId: customerUser.id,
+        customerNotes: input.customerNotes,
       });
-
-      if (status === "CONFIRMED") {
-        await enqueueAppointmentConfirmation(tx, {
-          tenantId: tenant.id,
-          appointmentId: appointment.id,
-          customerName: customer.name,
-          customerPhone: customer.phone,
-          serviceName: service.name,
-          startsAt,
-          timezone: tenant.timezone,
-          businessName: tenant.publicDisplayName ?? tenant.name,
-          businessAddress:
-            [tenant.address, tenant.city, tenant.state].filter(Boolean).join(", ") ||
-            undefined,
-        });
-      } else if (status === "REQUESTED") {
-        await enqueueAppointmentRequested(tx, {
-          tenantId: tenant.id,
-          appointmentId: appointment.id,
-          customerName: customer.name,
-          customerPhone: customer.phone,
-          serviceName: service.name,
-          startsAt,
-          timezone: tenant.timezone,
-          businessName: tenant.publicDisplayName ?? tenant.name,
-        });
-      }
 
       if (status === "CONFIRMED" || status === "REQUESTED") {
         const { date: bookingDate, time: bookingTime } = notificationDateParts(
@@ -470,23 +413,6 @@ export async function createPublicBooking(
           },
         };
         await createProviderNotification(notification, tx);
-      }
-
-      if (customValues.rows.length) {
-        const appointmentCustomValueClient = (
-          tx as unknown as {
-            appointmentCustomValue: {
-              createMany(args: unknown): Promise<unknown>;
-            };
-          }
-        ).appointmentCustomValue;
-        await appointmentCustomValueClient.createMany({
-          data: customValues.rows.map((row) => ({
-            appointmentId: appointment.id,
-            customFieldId: row.customFieldId,
-            value: row.value,
-          })),
-        });
       }
 
       const metadata = {

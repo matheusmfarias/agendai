@@ -4,6 +4,14 @@ import {
   generateTypebotToken,
   hashToken,
 } from "@/features/typebot/typebot-token-utils";
+import {
+  decryptTypebotCredential,
+  encryptTypebotCredential,
+} from "@/features/typebot/typebot-credential-crypto";
+
+const encryptionEnvironment = {
+  TYPEBOT_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+};
 
 describe("generateTypebotToken", () => {
   it("gera token com prefixo agz_tb_", () => {
@@ -93,5 +101,33 @@ describe("typebot token security", () => {
       // The token prefix should not appear in the hash
       expect(hash.includes("agz_tb_")).toBe(false);
     }
+  });
+});
+
+describe("typebot credential encryption", () => {
+  it("cifra e recupera o token sem persistir texto puro", () => {
+    const token = "agz_tb_tenant_secret";
+    const encrypted = encryptTypebotCredential(token, encryptionEnvironment);
+
+    expect(encrypted).not.toContain(token);
+    expect(decryptTypebotCredential(encrypted, encryptionEnvironment)).toBe(token);
+  });
+
+  it("falha de forma segura sem chave ou com conteúdo adulterado", () => {
+    expect(() => encryptTypebotCredential("agz_tb_secret", {})).toThrow(
+      "Criptografia de credenciais Typebot não configurada.",
+    );
+    const encrypted = encryptTypebotCredential("agz_tb_secret", encryptionEnvironment);
+    expect(() => decryptTypebotCredential(`${encrypted}x`, encryptionEnvironment)).toThrow(
+      "Credencial Typebot cifrada inválida.",
+    );
+  });
+
+  it("usa chave derivada de AUTH_SECRET quando a chave dedicada está ausente", () => {
+    const environment = { AUTH_SECRET: "a".repeat(48) };
+    const encrypted = encryptTypebotCredential("agz_tb_auth_secret", environment);
+
+    expect(encrypted.startsWith("v1a.")).toBe(true);
+    expect(decryptTypebotCredential(encrypted, environment)).toBe("agz_tb_auth_secret");
   });
 });

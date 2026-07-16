@@ -87,7 +87,7 @@ describe("provider notification multi-tab coordination", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("transfers leadership away from a hidden tab and reacquires only when visible", () => {
+  it("keeps a hidden tab polling until a visible tab takes leadership", () => {
     const first = createProviderNotificationCoordinator(
       { tenantId: "tenant-a", userId: "user-a" },
       vi.fn(),
@@ -96,7 +96,7 @@ describe("provider notification multi-tab coordination", () => {
 
     visibilityState = "hidden";
     dispatchVisibility();
-    expect(first.isLeader()).toBe(false);
+    expect(first.isLeader()).toBe(true);
 
     visibilityState = "visible";
     const replacement = createProviderNotificationCoordinator(
@@ -137,6 +137,12 @@ describe("provider notification multi-tab coordination", () => {
       isProviderNotificationCoordinationMessage({
         type: "invalidate",
         reason: "notifications",
+      }),
+    ).toBe(true);
+    expect(
+      isProviderNotificationCoordinationMessage({
+        type: "alert-delivered",
+        notificationId: "notification-a",
       }),
     ).toBe(true);
     expect(

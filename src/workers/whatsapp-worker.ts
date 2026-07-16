@@ -1,14 +1,22 @@
 import { Worker } from "bullmq";
 
 import { createWhatsAppProvider } from "@/features/whatsapp/whatsapp-provider-factory";
+import { recordWhatsAppSentMessage } from "@/features/whatsapp/whatsapp-sent-message-receipt";
 import {
+  appointmentCanceledPayloadSchema,
+  appointmentCompletedPayloadSchema,
   appointmentConfirmedPayloadSchema,
+  appointmentReminderPayloadSchema,
   appointmentRequestedPayloadSchema,
 } from "@/features/whatsapp/whatsapp-schemas";
 import {
+  renderAppointmentCanceledMessage,
+  renderAppointmentCompletedMessage,
   renderAppointmentConfirmedMessage,
+  renderAppointmentReminderMessage,
   renderAppointmentRequestedMessage,
 } from "@/features/whatsapp/whatsapp-template";
+import { canUseTypebot } from "@/features/subscriptions/subscription-policy";
 import { normalizeBrazilianWhatsAppPhone } from "@/features/whatsapp/whatsapp-phone";
 import {
   isRetryableWhatsAppError,
@@ -31,7 +39,12 @@ type ProcessingContext = {
 };
 
 function renderOutboxMessage(
-  type: "APPOINTMENT_CONFIRMED" | "APPOINTMENT_REQUESTED",
+  type:
+    | "APPOINTMENT_CONFIRMED"
+    | "APPOINTMENT_REQUESTED"
+    | "APPOINTMENT_REMINDER"
+    | "APPOINTMENT_CANCELED"
+    | "APPOINTMENT_COMPLETED",
   payload: unknown,
 ) {
   if (type === "APPOINTMENT_REQUESTED") {
@@ -44,6 +57,39 @@ function renderOutboxMessage(
       );
     }
     return renderAppointmentRequestedMessage(parsed.data);
+  }
+  if (type === "APPOINTMENT_REMINDER") {
+    const parsed = appointmentReminderPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new WhatsAppError(
+        WHATSAPP_ERROR_CODES.SEND_FAILED,
+        "Payload inválido.",
+        false,
+      );
+    }
+    return renderAppointmentReminderMessage(parsed.data);
+  }
+  if (type === "APPOINTMENT_CANCELED") {
+    const parsed = appointmentCanceledPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new WhatsAppError(
+        WHATSAPP_ERROR_CODES.SEND_FAILED,
+        "Payload inválido.",
+        false,
+      );
+    }
+    return renderAppointmentCanceledMessage(parsed.data);
+  }
+  if (type === "APPOINTMENT_COMPLETED") {
+    const parsed = appointmentCompletedPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new WhatsAppError(
+        WHATSAPP_ERROR_CODES.SEND_FAILED,
+        "Payload inválido.",
+        false,
+      );
+    }
+    return renderAppointmentCompletedMessage(parsed.data);
   }
   const parsed = appointmentConfirmedPayloadSchema.safeParse(payload);
   if (!parsed.success) {
@@ -87,12 +133,61 @@ export async function processWhatsAppOutbox(
   if (!claimed.count) return;
   const message = await prisma.whatsAppMessageOutbox.findUnique({
     where: { id: outboxId },
-    include: { connection: true },
+    include: {
+      appointment: {
+        select: { id: true, tenantId: true, startsAt: true, status: true },
+      },
+      connection: {
+        include: {
+          tenant: {
+            select: {
+              status: true,
+              subscription: {
+                select: {
+                  status: true,
+                  expiresAt: true,
+                  plan: {
+                    select: {
+                      publicLinkEnabled: true,
+                      whatsappEnabled: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   });
   if (!message) return;
   const connection = message.connection;
+  if (message.type === "APPOINTMENT_REMINDER") {
+    const appointment = message.appointment;
+    const expectedKey = appointment
+      ? `appointment:${appointment.id}:reminder:${appointment.startsAt.getTime()}:v1`
+      : null;
+    const isCurrentReminder =
+      appointment?.tenantId === message.tenantId &&
+      (appointment.status === "CONFIRMED" ||
+        appointment.status === "RESCHEDULED") &&
+      message.idempotencyKey === expectedKey;
+    if (!isCurrentReminder) {
+      await prisma.whatsAppMessageOutbox.update({
+        where: { id: message.id },
+        data: {
+          status: "CANCELED",
+          nextAttemptAt: null,
+          scheduledFor: null,
+        },
+      });
+      return;
+    }
+  }
+  const deliveryWindowStartedAt = message.scheduledFor ?? message.createdAt;
   const deliveryExpired =
-    now.getTime() - message.createdAt.getTime() >= WHATSAPP_DELIVERY_WINDOW_MS;
+    now.getTime() - deliveryWindowStartedAt.getTime() >=
+    WHATSAPP_DELIVERY_WINDOW_MS;
   if (deliveryExpired) {
     await prisma.whatsAppMessageOutbox.update({
       where: { id: message.id },
@@ -121,6 +216,19 @@ export async function processWhatsAppOutbox(
         false,
       );
     }
+    if (
+      !canUseTypebot({
+        tenantStatus: connection.tenant.status,
+        subscription: connection.tenant.subscription,
+        now,
+      })
+    ) {
+      throw new WhatsAppError(
+        WHATSAPP_ERROR_CODES.DELIVERY_DISABLED,
+        "Entrega indisponível no plano atual.",
+        false,
+      );
+    }
     if (!connection.instanceName.trim()) {
       throw new WhatsAppError(
         WHATSAPP_ERROR_CODES.DELIVERY_DISABLED,
@@ -139,16 +247,24 @@ export async function processWhatsAppOutbox(
       recipientPhone: message.recipientPhone,
       text: renderOutboxMessage(message.type, message.payload),
     });
-    await prisma.whatsAppMessageOutbox.update({
-      where: { id: message.id },
-      data: {
-        status: "SENT",
+    await prisma.$transaction(async (tx) => {
+      await recordWhatsAppSentMessage(tx, {
+        tenantId: message.tenantId,
+        connectionId: connection.id,
         externalMessageId: result.externalMessageId,
-        sentAt: now,
-        lastErrorCode: null,
-        lastErrorAt: null,
-        nextAttemptAt: null,
-      },
+        source: "TRANSACTIONAL",
+      });
+      await tx.whatsAppMessageOutbox.update({
+        where: { id: message.id },
+        data: {
+          status: "SENT",
+          externalMessageId: result.externalMessageId,
+          sentAt: now,
+          lastErrorCode: null,
+          lastErrorAt: null,
+          nextAttemptAt: null,
+        },
+      });
     });
   } catch (error) {
     const recoverableMissingInstance =
@@ -169,7 +285,7 @@ export async function processWhatsAppOutbox(
         nextAttemptAt: retryable
           ? nextPersistentRetryAt(
               now,
-              message.createdAt,
+              deliveryWindowStartedAt,
               message.attempts,
               recoverableMissingInstance ? 1 : MAX_QUICK_ATTEMPTS,
             )

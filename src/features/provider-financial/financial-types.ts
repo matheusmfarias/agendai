@@ -52,6 +52,7 @@ export type FinancialMetric = {
 };
 
 export type FinancialSeriesPoint = {
+  key: string;
   label: string;
   revenue: number;
   expenses: number;

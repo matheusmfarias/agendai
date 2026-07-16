@@ -1,9 +1,18 @@
-export type ProviderNotificationCoordinationMessage = {
-  type: "invalidate";
-  reason: "notifications" | "preferences";
-};
+export type ProviderNotificationCoordinationMessage =
+  | {
+      type: "invalidate";
+      reason: "notifications" | "preferences";
+    }
+  | {
+      type: "alert-delivered";
+      notificationId: string;
+    };
 
-type LeaderLease = { owner: string; expiresAt: number };
+type LeaderLease = {
+  owner: string;
+  expiresAt: number;
+  visible: boolean;
+};
 type StoredMessage = {
   owner: string;
   nonce: string;
@@ -15,10 +24,15 @@ export function isProviderNotificationCoordinationMessage(
 ): value is ProviderNotificationCoordinationMessage {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
+  if (Object.keys(record).length !== 2) return false;
+  if (record.type === "invalidate") {
+    return record.reason === "notifications" || record.reason === "preferences";
+  }
   return (
-    Object.keys(record).length === 2 &&
-    record.type === "invalidate" &&
-    (record.reason === "notifications" || record.reason === "preferences")
+    record.type === "alert-delivered" &&
+    typeof record.notificationId === "string" &&
+    record.notificationId.length > 0 &&
+    record.notificationId.length <= 100
   );
 }
 
@@ -48,7 +62,7 @@ export function createProviderNotificationCoordinator(
       const parsed = JSON.parse(value) as LeaderLease;
       return typeof parsed.owner === "string" &&
         typeof parsed.expiresAt === "number"
-        ? parsed
+        ? { ...parsed, visible: parsed.visible === true }
         : null;
     } catch {
       return null;
@@ -68,19 +82,21 @@ export function createProviderNotificationCoordinator(
   }
 
   function acquire() {
-    if (!isVisible()) {
-      release();
-      return false;
-    }
+    const visible = isVisible();
     const current = readLease();
-    if (current && current.owner !== owner && current.expiresAt > Date.now()) {
+    if (
+      current &&
+      current.owner !== owner &&
+      current.expiresAt > Date.now() &&
+      !(visible && !current.visible)
+    ) {
       leader = false;
       return false;
     }
     try {
       window.localStorage.setItem(
         leaderKey,
-        JSON.stringify({ owner, expiresAt: Date.now() + 12_000 }),
+        JSON.stringify({ owner, expiresAt: Date.now() + 12_000, visible }),
       );
       leader = readLease()?.owner === owner;
     } catch {
@@ -91,8 +107,7 @@ export function createProviderNotificationCoordinator(
 
   acquire();
   const heartbeat = window.setInterval(() => {
-    if (isVisible()) acquire();
-    else release();
+    acquire();
   }, 4_000);
 
   const receive = (value: unknown) => {
@@ -109,14 +124,16 @@ export function createProviderNotificationCoordinator(
     }
   };
   const onVisibilityChange = () => {
-    if (isVisible()) acquire();
-    else release();
+    acquire();
   };
   window.addEventListener("storage", onStorage);
   document.addEventListener("visibilitychange", onVisibilityChange);
 
   return {
-    isLeader: () => leader && isVisible(),
+    isLeader: () => {
+      const lease = readLease();
+      return leader && (!lease || lease.owner === owner);
+    },
     publish(message: ProviderNotificationCoordinationMessage) {
       if (!isProviderNotificationCoordinationMessage(message)) return;
       channel?.postMessage(message);

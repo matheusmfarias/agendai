@@ -35,6 +35,7 @@ import {
 import {
   APPOINTMENT_STATUS_PRESENTATION,
   AppointmentStatusBadge,
+  getAppointmentCompletionState,
 } from "@/features/appointments/appointment-status";
 import type {
   AppointmentOrigin,
@@ -2390,6 +2391,7 @@ function AppointmentDetailPanel({
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [entered, setEntered] = useState(false);
   const [confirmPending, startConfirmTransition] = useTransition();
+  const [completionPending, startCompletionTransition] = useTransition();
   const isLocked = [
     "CANCELED_BY_CUSTOMER",
     "CANCELED_BY_PROVIDER",
@@ -2431,6 +2433,10 @@ function AppointmentDetailPanel({
         ...services,
       ];
   const isFinished = appointment.status === "FINISHED";
+  const completion = getAppointmentCompletionState({
+    status: appointment.status,
+    endsAt: appointment.endsAt,
+  });
   const customFieldValues = Object.fromEntries(
     appointment.customValues.map((item) => [item.customFieldId, item.value]),
   );
@@ -2464,6 +2470,9 @@ function AppointmentDetailPanel({
     !["CANCELED_BY_CUSTOMER", "CANCELED_BY_PROVIDER", "NO_SHOW"].includes(
       appointment.status,
     );
+  const canFinish = ["CONFIRMED", "RESCHEDULED", "IN_PROGRESS"].includes(
+    appointment.status,
+  );
 
   function confirmAppointment() {
     const data = new FormData();
@@ -2475,6 +2484,20 @@ function AppointmentDetailPanel({
     }
 
     startConfirmTransition(async () => {
+      await statusAction({}, data);
+    });
+  }
+
+  function finishAppointment() {
+    const data = new FormData();
+    data.set("id", appointment.id);
+    data.set("status", "FINISHED");
+
+    if (typeof window !== "undefined") {
+      data.set("returnTo", window.location.href);
+    }
+
+    startCompletionTransition(async () => {
       await statusAction({}, data);
     });
   }
@@ -2597,7 +2620,15 @@ function AppointmentDetailPanel({
               onDiscard={() => setEditing(false)}
               lockSchedule={isFinished}
               customFieldValues={customFieldValues}
-              statusOptions={isFinished ? ["FINISHED", "NO_SHOW"] : undefined}
+              statusOptions={
+                isFinished
+                  ? ["FINISHED", "NO_SHOW"]
+                  : [
+                      appointment.status,
+                      ...APPOINTMENT_STATUS_PRESENTATION[appointment.status]
+                        .allowedTransitions,
+                    ].filter((status) => status !== "FINISHED")
+              }
               defaultValues={{
                 id: appointment.id,
                 customerId: appointment.customer.id,
@@ -2616,6 +2647,23 @@ function AppointmentDetailPanel({
             />
           ) : activeTab === "appointment" ? (
             <div className="space-y-4">
+              {completion.overdue ? (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+                  <p className="font-semibold">Horário previsto encerrado</p>
+                  <p className="mt-1 text-sm text-amber-800">
+                    {completion.overtimeLabel}. O atendimento permanece aberto até a conclusão manual.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+                    disabled={completionPending}
+                    onClick={finishAppointment}
+                  >
+                    {completionPending ? "Finalizando..." : "Finalizar atendimento"}
+                  </Button>
+                </div>
+              ) : null}
               <div className="rounded-2xl border border-border p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Data e horário
@@ -2793,10 +2841,24 @@ function AppointmentDetailPanel({
                 >
                   {confirmPending ? "Confirmando..." : "Confirmar"}
                 </Button>
-              ) : canCheckout ? (
-                <Button type="button" onClick={() => setCheckout(true)}>
-                  Checkout
-                </Button>
+              ) : canCheckout || canFinish ? (
+                <>
+                  {canFinish ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={completionPending}
+                      onClick={finishAppointment}
+                    >
+                      {completionPending ? "Finalizando..." : "Finalizar"}
+                    </Button>
+                  ) : null}
+                  {canCheckout ? (
+                    <Button type="button" onClick={() => setCheckout(true)}>
+                      Checkout
+                    </Button>
+                  ) : null}
+                </>
               ) : (
                 <Button type="button" variant="outline" onClick={onClose}>
                   Fechar

@@ -184,6 +184,26 @@ describe("checkTypebotRateLimit", () => {
     );
     expect(result.ok).toBe(true);
   });
+
+  it.each(["categories", "available-periods", "custom-fields"])(
+    "classifica %s como leitura",
+    (endpoint) => {
+      const slug = `tenant-read-${endpoint}`;
+      const credential = `cred-read-${endpoint}`;
+
+      for (let index = 0; index <= RATE_LIMITS.WRITE_LIMIT; index++) {
+        expect(
+          checkTypebotRateLimit(
+            slug,
+            endpoint,
+            true,
+            credential,
+            "10.0.0.20",
+          ).ok,
+        ).toBe(true);
+      }
+    },
+  );
 });
 
 describe("getClientIp", () => {
@@ -219,6 +239,8 @@ describe("RATE_LIMITS constants", () => {
     expect(RATE_LIMITS.READ_GROUPS.has("business")).toBe(true);
     expect(RATE_LIMITS.READ_GROUPS.has("services")).toBe(true);
     expect(RATE_LIMITS.READ_GROUPS.has("service-detail")).toBe(true);
+    expect(RATE_LIMITS.READ_GROUPS.has("custom-fields")).toBe(true);
+    expect(RATE_LIMITS.READ_GROUPS.has("available-dates")).toBe(true);
     expect(RATE_LIMITS.READ_GROUPS.has("slots")).toBe(true);
     expect(RATE_LIMITS.READ_GROUPS.has("appointment-detail")).toBe(true);
     expect(RATE_LIMITS.READ_GROUPS.has("identify")).toBe(false);

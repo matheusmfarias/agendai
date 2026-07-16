@@ -13,14 +13,32 @@ export type WhatsAppInstanceInfo = {
   status: WhatsAppConnectionState;
 };
 
+export type WhatsAppInteractiveOption = {
+  id: string;
+  title: string;
+};
+
 export interface WhatsAppProvider {
   createInstance(input: CreateWhatsAppInstanceInput): Promise<WhatsAppInstanceInfo>;
+  configureWebhook(input: CreateWhatsAppInstanceInput): Promise<void>;
   getConnectionStatus(instanceName: string): Promise<WhatsAppInstanceInfo>;
   getQrCode(instanceName: string): Promise<{ base64: string; expiresInSeconds: number }>;
   sendText(input: {
     instanceName: string;
     recipientPhone: string;
     text: string;
+  }): Promise<{ externalMessageId: string }>;
+  sendButtons(input: {
+    instanceName: string;
+    recipientPhone: string;
+    text: string;
+    options: WhatsAppInteractiveOption[];
+  }): Promise<{ externalMessageId: string }>;
+  sendList(input: {
+    instanceName: string;
+    recipientPhone: string;
+    text: string;
+    options: WhatsAppInteractiveOption[];
   }): Promise<{ externalMessageId: string }>;
   disconnect(instanceName: string): Promise<void>;
   deleteInstance(instanceName: string): Promise<void>;

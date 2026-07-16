@@ -1,9 +1,15 @@
 import type {
   AppointmentConfirmedPayload,
+  AppointmentCanceledPayload,
+  AppointmentCompletedPayload,
+  AppointmentReminderPayload,
   AppointmentRequestedPayload,
 } from "@/features/whatsapp/whatsapp-types";
 import {
   appointmentConfirmedPayloadSchema,
+  appointmentCanceledPayloadSchema,
+  appointmentCompletedPayloadSchema,
+  appointmentReminderPayloadSchema,
   appointmentRequestedPayloadSchema,
 } from "@/features/whatsapp/whatsapp-schemas";
 
@@ -26,11 +32,21 @@ export function renderAppointmentConfirmedMessage(
     "",
     payload.businessName,
   ].filter((line): line is string => line !== null);
-  const message = lines.join("\n");
-  if (message.length > MAX_MESSAGE_LENGTH) {
-    throw new Error("Template de confirmação excede o limite permitido.");
-  }
-  return message;
+  return lines.join("\n");
+}
+
+export function renderAppointmentReminderMessage(
+  input: AppointmentReminderPayload,
+) {
+  const payload = appointmentReminderPayloadSchema.parse(input);
+  return `Olá, ${payload.customerName}! Passando para lembrar do seu agendamento de ${payload.serviceName} em ${payload.bookingDate} às ${payload.bookingTime}.`;
+}
+
+export function renderAppointmentCanceledMessage(
+  input: AppointmentCanceledPayload,
+) {
+  const payload = appointmentCanceledPayloadSchema.parse(input);
+  return `Olá, ${payload.customerName}. Seu agendamento de ${payload.serviceName} em ${payload.bookingDate} às ${payload.bookingTime} foi cancelado.`;
 }
 
 export function renderAppointmentRequestedMessage(
@@ -54,6 +70,30 @@ export function renderAppointmentRequestedMessage(
   const message = lines.join("\n");
   if (message.length > MAX_MESSAGE_LENGTH) {
     throw new Error("Template de solicitação excede o limite permitido.");
+  }
+  return message;
+}
+
+export function renderAppointmentCompletedMessage(
+  input: AppointmentCompletedPayload,
+) {
+  const payload = appointmentCompletedPayloadSchema.parse(input);
+  const lines = [
+    `Olá, ${payload.customerName}! Seu atendimento foi concluído.`,
+    "",
+    `Serviço: ${payload.serviceName}`,
+    `Data: ${payload.bookingDate}`,
+    payload.professionalName
+      ? `Profissional: ${payload.professionalName}`
+      : null,
+    "",
+    "Se precisar de alguma informação adicional, entre em contato com o estabelecimento.",
+    "",
+    payload.businessName,
+  ].filter((line): line is string => line !== null);
+  const message = lines.join("\n");
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    throw new Error("Template de conclusão excede o limite permitido.");
   }
   return message;
 }

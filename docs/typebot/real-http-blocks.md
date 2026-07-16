@@ -1,5 +1,10 @@
 # Blocos HTTP — Typebot Real
 
+> **Documento histórico.** Os blocos canônicos já estão em
+> [`agendai-mvp.typebot.json`](./agendai-mvp.typebot.json). Para contratos e
+> exemplos atuais, use o [guia de importação](./real-setup-guide.md) e
+> [`typebot-api.md`](../technical/typebot-api.md).
+
 Cada bloco HTTP que deve ser configurado no Typebot para chamar a API do
 AgendaZap. Este documento complementa [http-requests.md](./http-requests.md)
 com o formato prático de configuração no editor do Typebot.

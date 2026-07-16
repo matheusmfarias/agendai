@@ -26,28 +26,86 @@ function publicStatusForBookingMode(
 
 export { publicStatusForBookingMode };
 
-export async function getAvailableSlots(tenantId: string, serviceId: string) {
-  const [tenant, service] = await Promise.all([
-    prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        timezone: true,
-        defaultAppointmentDuration: true,
-        defaultSlotInterval: true,
-        minBookingNoticeMinutes: true,
-        maxBookingAdvanceDays: true,
-      },
-    }),
-    prisma.service.findFirst({
-      where: {
-        id: serviceId,
-        tenantId,
-        isActive: true,
-        category: { isActive: true },
-      },
-      select: { durationMinutes: true },
-    }),
-  ]);
+export type AvailabilityContext = {
+  tenant: {
+    timezone: string;
+    defaultAppointmentDuration: number;
+    defaultSlotInterval: number;
+    minBookingNoticeMinutes: number;
+    maxBookingAdvanceDays: number;
+  };
+  service: {
+    durationMinutes: number;
+  };
+};
+
+type AvailableSlotsOptions = {
+  context?: AvailabilityContext;
+  dates?: string[];
+};
+
+export function getBookableDateRange(input: {
+  timezone: string;
+  maxBookingAdvanceDays: number;
+  startDate?: string;
+  days: number;
+  now?: Date;
+}) {
+  const timezone = normalizeBookingTimezone(input.timezone);
+  const today = getDateStringInTimezone(input.now ?? new Date(), timezone);
+  const bookingWindowDates = Array.from(
+    { length: Math.max(1, input.maxBookingAdvanceDays) },
+    (_, index) => addDaysToDateString(today, index),
+  );
+  const allowedDates = new Set(bookingWindowDates);
+  const requestedStartDate = input.startDate ?? today;
+
+  return Array.from({ length: Math.max(1, input.days) }, (_, index) =>
+    addDaysToDateString(requestedStartDate, index),
+  ).filter((date) => allowedDates.has(date));
+}
+
+function overlapsBusyInterval(
+  busyIntervals: { startsAt: Date; endsAt: Date }[],
+  startsAt: Date,
+  endsAt: Date,
+) {
+  for (const interval of busyIntervals) {
+    if (interval.startsAt >= endsAt) return false;
+    if (startsAt < interval.endsAt && endsAt > interval.startsAt) return true;
+  }
+
+  return false;
+}
+
+export async function getAvailableSlots(
+  tenantId: string,
+  serviceId: string,
+  options: AvailableSlotsOptions = {},
+) {
+  const [tenant, service] = options.context
+    ? [options.context.tenant, options.context.service]
+    : await Promise.all([
+        prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: {
+            timezone: true,
+            defaultAppointmentDuration: true,
+            defaultSlotInterval: true,
+            minBookingNoticeMinutes: true,
+            maxBookingAdvanceDays: true,
+          },
+        }),
+        prisma.service.findFirst({
+          where: {
+            id: serviceId,
+            tenantId,
+            isActive: true,
+            category: { isActive: true },
+          },
+          select: { durationMinutes: true },
+        }),
+      ]);
   if (!tenant || !service) return [];
 
   const timezone = normalizeBookingTimezone(tenant.timezone);
@@ -58,10 +116,19 @@ export async function getAvailableSlots(tenantId: string, serviceId: string) {
   const earliestStart = new Date(
     Date.now() + tenant.minBookingNoticeMinutes * 60_000,
   );
-  const today = getDateStringInTimezone(new Date(), timezone);
-  const dates = Array.from({ length: windowDays }, (_, index) =>
-    addDaysToDateString(today, index),
-  );
+  const bookingWindowDates = getBookableDateRange({
+    timezone,
+    maxBookingAdvanceDays: windowDays,
+    days: windowDays,
+  });
+  const allowedDates = new Set(bookingWindowDates);
+  const dates = options.dates
+    ? [...new Set(options.dates)]
+        .filter((date) => allowedDates.has(date))
+        .sort()
+    : bookingWindowDates;
+  if (!dates.length) return [];
+
   const weekdays = dates.map((date) => {
     const parts = getPartsInTimezone(
       dateAtMinutesInTimezone(date, 12 * 60, timezone),
@@ -76,6 +143,12 @@ export async function getAvailableSlots(tenantId: string, serviceId: string) {
       weekday: { in: weekdays.map((item) => item.weekday) },
     },
     orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
+    select: {
+      weekday: true,
+      startTime: true,
+      endTime: true,
+      slotIntervalMinutes: true,
+    },
   });
   const windowStart = dateAtMinutesInTimezone(dates[0], 0, timezone);
   const windowEnd = dateAtMinutesInTimezone(
@@ -103,9 +176,18 @@ export async function getAvailableSlots(tenantId: string, serviceId: string) {
     }),
   ]);
 
+  const rulesByWeekday = new Map<number, typeof rules>();
+  for (const rule of rules) {
+    const weekdayRules = rulesByWeekday.get(rule.weekday) ?? [];
+    weekdayRules.push(rule);
+    rulesByWeekday.set(rule.weekday, weekdayRules);
+  }
+  const busyIntervals = [...appointments, ...blocks].sort(
+    (first, second) => first.startsAt.getTime() - second.startsAt.getTime(),
+  );
+
   return weekdays.flatMap(({ date, weekday }) =>
-    rules
-      .filter((rule) => rule.weekday === weekday)
+    (rulesByWeekday.get(weekday) ?? [])
       .flatMap((rule) => {
         const start = timeDateToMinutes(rule.startTime);
         const end = timeDateToMinutes(rule.endTime);
@@ -127,15 +209,7 @@ export async function getAvailableSlots(tenantId: string, serviceId: string) {
           const endsAt = calculateAppointmentEnd(startsAt, durationMinutes);
           const unavailable =
             startsAt < earliestStart ||
-            appointments.some(
-              (appointment) =>
-                startsAt < appointment.endsAt &&
-                endsAt > appointment.startsAt,
-            ) ||
-            blocks.some(
-              (block) =>
-                startsAt < block.endsAt && endsAt > block.startsAt,
-            );
+            overlapsBusyInterval(busyIntervals, startsAt, endsAt);
 
           if (!unavailable) {
             values.push({

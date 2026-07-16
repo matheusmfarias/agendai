@@ -15,6 +15,14 @@ export type AppointmentConfirmedPayload = {
   bookingTime: string;
   businessAddress?: string;
   appointmentId: string;
+  messageTemplate?: string;
+};
+
+export type AppointmentReminderPayload = AppointmentConfirmedPayload & {
+  messageTemplate: string;
+};
+export type AppointmentCanceledPayload = AppointmentConfirmedPayload & {
+  messageTemplate: string;
 };
 
 export type AppointmentRequestedPayload = {
@@ -27,6 +35,8 @@ export type AppointmentRequestedPayload = {
   appointmentId: string;
 };
 
+export type AppointmentCompletedPayload = AppointmentRequestedPayload;
+
 export type WhatsAppConnectionView = {
   id: string;
   status: WhatsAppConnectionState;
@@ -34,6 +44,7 @@ export type WhatsAppConnectionView = {
   enabled: boolean;
   sendAppointmentConfirmation: boolean;
   sendAppointmentRequested: boolean;
+  sendAppointmentCompleted: boolean;
   connectedAt: string | null;
   lastHealthyAt: string | null;
   lastErrorCode: string | null;

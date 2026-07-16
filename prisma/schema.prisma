@@ -152,9 +152,22 @@ enum WhatsAppMessageStatus {
   CANCELED
 }
 
+enum WhatsAppInboundMessageStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  RETRYING
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
 enum WhatsAppMessageType {
   APPOINTMENT_CONFIRMED
   APPOINTMENT_REQUESTED
+  APPOINTMENT_REMINDER
+  APPOINTMENT_CANCELED
+  APPOINTMENT_COMPLETED
 }
 
 model User {
@@ -202,6 +215,7 @@ model Tenant {
   addressComplement               String?                          @map("address_complement")
   googleMapsUrl                   String?                          @map("google_maps_url")
   publicLinkActive                Boolean                          @default(true) @map("public_link_active")
+  typebotPublicId                 String?                          @unique @map("typebot_public_id")
   serviceLocation                 String                           @default("BUSINESS_ADDRESS") @map("service_location")
   timezone                        String                           @default("America/Sao_Paulo")
   locale                          String                           @default("pt-BR")
@@ -248,6 +262,8 @@ model Tenant {
   providerNotificationPreferences ProviderNotificationPreference[]
   whatsappConnections             WhatsAppConnection[]
   whatsappMessageOutbox           WhatsAppMessageOutbox[]
+  whatsappInboundMessages         WhatsAppInboundMessage[]
+  whatsappSentMessageReceipts     WhatsAppSentMessageReceipt[]
 
   @@index([documentNumber], map: "tenants_document_number_idx")
   @@map("tenants")
@@ -619,29 +635,62 @@ model ProviderNotificationPreference {
 }
 
 model WhatsAppConnection {
-  id                          String                   @id @default(uuid()) @db.Uuid
-  tenantId                    String                   @unique @map("tenant_id") @db.Uuid
-  provider                    WhatsAppProviderType     @default(EVOLUTION)
-  externalId                  String?                  @map("external_id")
-  instanceName                String                   @unique @map("instance_name")
-  phoneNumber                 String?                  @map("phone_number")
-  status                      WhatsAppConnectionStatus @default(DISCONNECTED)
-  enabled                     Boolean                  @default(false)
-  sendAppointmentConfirmation Boolean                  @default(false) @map("send_appointment_confirmation")
-  sendAppointmentRequested    Boolean                  @default(true) @map("send_appointment_requested")
-  connectedAt                 DateTime?                @map("connected_at") @db.Timestamptz(3)
-  disconnectedAt              DateTime?                @map("disconnected_at") @db.Timestamptz(3)
-  lastHealthyAt               DateTime?                @map("last_healthy_at") @db.Timestamptz(3)
-  lastErrorCode               String?                  @map("last_error_code")
-  lastErrorAt                 DateTime?                @map("last_error_at") @db.Timestamptz(3)
-  createdAt                   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                   DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
-  tenant                      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                          String                       @id @default(uuid()) @db.Uuid
+  tenantId                    String                       @unique @map("tenant_id") @db.Uuid
+  provider                    WhatsAppProviderType         @default(EVOLUTION)
+  externalId                  String?                      @map("external_id")
+  instanceName                String                       @unique @map("instance_name")
+  phoneNumber                 String?                      @map("phone_number")
+  status                      WhatsAppConnectionStatus     @default(DISCONNECTED)
+  enabled                     Boolean                      @default(false)
+  sendAppointmentConfirmation Boolean                      @default(false) @map("send_appointment_confirmation")
+  sendAppointmentRequested    Boolean                      @default(true) @map("send_appointment_requested")
+  sendAppointmentCompleted    Boolean                      @default(true) @map("send_appointment_completed")
+  connectedAt                 DateTime?                    @map("connected_at") @db.Timestamptz(3)
+  disconnectedAt              DateTime?                    @map("disconnected_at") @db.Timestamptz(3)
+  lastHealthyAt               DateTime?                    @map("last_healthy_at") @db.Timestamptz(3)
+  lastErrorCode               String?                      @map("last_error_code")
+  lastErrorAt                 DateTime?                    @map("last_error_at") @db.Timestamptz(3)
+  createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   messages                    WhatsAppMessageOutbox[]
+  inboundMessages             WhatsAppInboundMessage[]
+  sentMessageReceipts         WhatsAppSentMessageReceipt[]
 
   @@unique([id, tenantId])
   @@index([tenantId, status])
   @@map("whatsapp_connections")
+}
+
+model WhatsAppInboundMessage {
+  id               String                       @id @default(uuid()) @db.Uuid
+  tenantId         String                       @map("tenant_id") @db.Uuid
+  connectionId     String                       @map("connection_id") @db.Uuid
+  messageId        String                       @map("message_id")
+  senderPhone      String                       @map("sender_phone")
+  messageText      String                       @map("message_text") @db.Text
+  status           WhatsAppInboundMessageStatus @default(PENDING)
+  attempts         Int                          @default(0)
+  nextAttemptAt    DateTime?                    @map("next_attempt_at") @db.Timestamptz(3)
+  typebotSessionId String?                      @map("typebot_session_id")
+  responseText     String?                      @map("response_text") @db.Text
+  responsePayload  Json?                        @map("response_payload")
+  fallbackSentAt   DateTime?                    @map("fallback_sent_at") @db.Timestamptz(3)
+  lastErrorCode    String?                      @map("last_error_code")
+  receivedAt       DateTime                     @default(now()) @map("received_at") @db.Timestamptz(3)
+  processingAt     DateTime?                    @map("processing_at") @db.Timestamptz(3)
+  processedAt      DateTime?                    @map("processed_at") @db.Timestamptz(3)
+  createdAt        DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenant           Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connection       WhatsAppConnection           @relation(fields: [connectionId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "whatsapp_inbound_messages_connection_tenant_fkey")
+
+  @@unique([tenantId, messageId])
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, senderPhone, receivedAt])
+  @@index([connectionId, tenantId])
+  @@map("whatsapp_inbound_messages")
 }
 
 model WhatsAppMessageOutbox {
@@ -656,6 +705,7 @@ model WhatsAppMessageOutbox {
   idempotencyKey    String                @map("idempotency_key")
   status            WhatsAppMessageStatus @default(PENDING)
   attempts          Int                   @default(0)
+  scheduledFor      DateTime?             @map("scheduled_for") @db.Timestamptz(3)
   nextAttemptAt     DateTime?             @map("next_attempt_at") @db.Timestamptz(3)
   externalMessageId String?               @map("external_message_id")
   lastErrorCode     String?               @map("last_error_code")
@@ -672,10 +722,26 @@ model WhatsAppMessageOutbox {
 
   @@unique([tenantId, idempotencyKey])
   @@index([status, nextAttemptAt])
+  @@index([status, scheduledFor])
   @@index([tenantId, createdAt])
   @@index([appointmentId])
   @@index([connectionId, tenantId])
   @@map("whatsapp_message_outbox")
+}
+
+model WhatsAppSentMessageReceipt {
+  id                String             @id @default(uuid()) @db.Uuid
+  tenantId          String             @map("tenant_id") @db.Uuid
+  connectionId      String             @map("connection_id") @db.Uuid
+  externalMessageId String             @map("external_message_id")
+  source            String
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connection        WhatsAppConnection @relation(fields: [connectionId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "whatsapp_sent_message_receipts_connection_tenant_fkey")
+
+  @@unique([tenantId, externalMessageId])
+  @@index([connectionId, tenantId, createdAt])
+  @@map("whatsapp_sent_message_receipts")
 }
 
 model FinancialEntry {
@@ -775,6 +841,10 @@ model TypebotSession {
   lastServiceId     String?              @map("last_service_id") @db.Uuid
   lastAppointmentId String?              @map("last_appointment_id") @db.Uuid
   status            TypebotSessionStatus @default(STARTED)
+  externalSessionId String?              @unique @map("external_session_id")
+  activePhone       String?              @map("active_phone")
+  handoffUntil      DateTime?            @map("handoff_until") @db.Timestamptz(3)
+  endedAt           DateTime?            @map("ended_at") @db.Timestamptz(3)
   metadata          Json?
   lastInteractionAt DateTime             @default(now()) @map("last_interaction_at") @db.Timestamptz(3)
   createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -782,6 +852,8 @@ model TypebotSession {
   tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer          Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
+  @@unique([tenantId, activePhone])
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([phone])
   @@index([tenantId, phone])
@@ -791,16 +863,17 @@ model TypebotSession {
 }
 
 model TypebotCredential {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @map("tenant_id") @db.Uuid
-  name        String
-  tokenHash   String    @map("token_hash")
-  tokenPrefix String    @map("token_prefix")
-  isActive    Boolean   @default(true) @map("is_active")
-  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(3)
-  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  name           String
+  tokenHash      String    @map("token_hash")
+  tokenPrefix    String    @map("token_prefix")
+  tokenEncrypted String?   @map("token_encrypted") @db.Text
+  isActive       Boolean   @default(true) @map("is_active")
+  lastUsedAt     DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
