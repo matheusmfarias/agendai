@@ -222,26 +222,31 @@ x-typebot-api-key: {{typebotApiKey}}
 Content-Type: application/json; charset=utf-8
 
 {
-  "phone": "{{customerPhone}}",
-  "name": "{{customerName}}"
+  "action": "LOOKUP",
+  "phone": "{{phone}}"
 }
 ```
 
 ```json
 {
   "ok": true,
-  "customer": {
-    "id": "customer-uuid",
-    "name": "Cliente",
-    "phone": "5511999999999",
-    "email": null
+  "lookup": {
+    "status": "NOT_FOUND",
+    "customerName": null,
+    "requiresConfirmation": false,
+    "requiresName": true
   },
   "session": {
     "id": "session-uuid",
-    "status": "IDENTIFIED"
+    "status": "STARTED"
   }
 }
 ```
+
+Em seguida, use `CONFIRM` com o `sessionId` quando o lookup retornar `FOUND`;
+use `CREATE` com `sessionId`, `name` e `rejectedExisting` quando for necessário
+informar outro nome. O contrato completo está em
+[typebot-api.md](../technical/typebot-api.md#identificação-segura-do-cliente).
 
 ### Criação
 

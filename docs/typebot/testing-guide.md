@@ -139,43 +139,43 @@ curl -s $AUTH_HEADER $BASE/outro-slug/services/$SERVICE_ID | jq .
 ```bash
 SERVICE_ID=$(curl -s $AUTH_HEADER $BASE/$SLUG/services | jq -r '.services[0].id')
 
-curl -s -X POST $AUTH_HEADER \
+LOOKUP=$(curl -s -X POST $AUTH_HEADER \
   -H "Content-Type: application/json; charset=utf-8" \
-  -d '{"phone":"55999999999","name":"João Silva","email":"joao@teste.com"}' \
-  $BASE/$SLUG/customers/identify | jq .
+  -d '{"action":"LOOKUP","phone":"11999999999"}' \
+  $BASE/$SLUG/customers/identify)
+echo "$LOOKUP" | jq .
+SESSION_ID=$(echo "$LOOKUP" | jq -r '.session.id')
 ```
 
 **Validações:**
 
 - [ ] Status HTTP 200
 - [ ] `ok == true`
-- [ ] `customer.id` é UUID
-- [ ] `customer.name == "João Silva"`
-- [ ] `customer.phone == "55999999999"`
+- [ ] `lookup.status` é `FOUND`, `NOT_FOUND` ou `AMBIGUOUS`
 - [ ] `session.id` é UUID
-- [ ] `session.status == "IDENTIFIED"`
+- [ ] `session.status == "STARTED"`
 
-**Teste sem e-mail:**
-
-```bash
-curl -s -X POST $AUTH_HEADER \
-  -H "Content-Type: application/json; charset=utf-8" \
-  -d '{"phone":"55999999999","name":"João Silva"}' \
-  $BASE/$SLUG/customers/identify | jq .
-```
-
-- [ ] Funciona sem o campo `email`
-
-**Teste com nome acentuado (UTF-8):**
+**Confirmar um candidato `FOUND`:**
 
 ```bash
 curl -s -X POST $AUTH_HEADER \
   -H "Content-Type: application/json; charset=utf-8" \
-  -d '{"phone":"55988888888","name":"José Conceição"}' \
+  -d "{\"action\":\"CONFIRM\",\"sessionId\":\"$SESSION_ID\"}" \
   $BASE/$SLUG/customers/identify | jq .
 ```
 
-- [ ] `customer.name == "José Conceição"` (acentos preservados)
+- [ ] `customer.id` é UUID e a sessão fica `IDENTIFIED`
+
+**Criar/reutilizar após `NOT_FOUND` ou “Não sou eu”:**
+
+```bash
+curl -s -X POST $AUTH_HEADER \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d "{\"action\":\"CREATE\",\"sessionId\":\"$SESSION_ID\",\"name\":\"José Conceição\",\"rejectedExisting\":true}" \
+  $BASE/$SLUG/customers/identify | jq .
+```
+
+- [ ] `customer.name == "José Conceição"` e acentos são preservados
 
 **Teste de mojibake (PowerShell):**
 
@@ -188,7 +188,7 @@ Ver [documentação da API](../technical/typebot-api.md#encoding-e-caracteres-ac
 ```bash
 curl -s -X POST $AUTH_HEADER \
   -H "Content-Type: application/json; charset=utf-8" \
-  -d '{"phone":"123","name":"A"}' \
+  -d '{"action":"LOOKUP","phone":"123"}' \
   $BASE/$SLUG/customers/identify | jq .
 ```
 
@@ -200,16 +200,7 @@ curl -s -X POST $AUTH_HEADER \
 ## 6. Testar slots
 
 ```bash
-# Salvar IDs da etapa anterior
-CUSTOMER_ID=$(curl -s -X POST $AUTH_HEADER \
-  -H "Content-Type: application/json; charset=utf-8" \
-  -d '{"phone":"55999999999","name":"João Silva"}' \
-  $BASE/$SLUG/customers/identify | jq -r '.customer.id')
-
-SESSION_ID=$(curl -s -X POST $AUTH_HEADER \
-  -H "Content-Type: application/json; charset=utf-8" \
-  -d '{"phone":"55999999999","name":"João Silva"}' \
-  $BASE/$SLUG/customers/identify | jq -r '.session.id')
+# Reutilize CUSTOMER_ID e SESSION_ID obtidos por CONFIRM ou CREATE acima.
 
 # Buscar slots
 curl -s $AUTH_HEADER "$BASE/$SLUG/services/$SERVICE_ID/slots?days=7" | jq .

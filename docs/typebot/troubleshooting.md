@@ -1,6 +1,6 @@
 # Typebot Troubleshooting
 
-Guia de diagnóstico e resolução para problemas comuns na integração Typebot ↔ AgendaZap.
+Guia de diagnóstico e resolução para problemas comuns na integração Typebot ↔ Agendaí.
 
 ---
 
@@ -169,12 +169,12 @@ Guia de diagnóstico e resolução para problemas comuns na integração Typebot
 **Sintoma:** Resposta `500` com `INTERNAL_ERROR`.
 
 **Causas prováveis:**
-- Erro inesperado no servidor do AgendaZap
+- Erro inesperado no servidor do Agendaí
 - Problema de conexão com banco de dados
 - Bug no processamento da requisição
 
 **Como verificar:**
-1. Verifique os logs do servidor do AgendaZap
+1. Verifique os logs do servidor do Agendaí
 2. Confira se o banco de dados está acessível
 3. Tente a mesma requisição via curl para isolar o problema
 
@@ -210,7 +210,7 @@ Guia de diagnóstico e resolução para problemas comuns na integração Typebot
 
 **Como resolver:**
 1. Use um túnel HTTPS para expor seu servidor local temporariamente
-2. Publique o AgendaZap em um ambiente de homologação com URL pública
+2. Publique o Agendaí em um ambiente de homologação com URL pública
 3. Atualize `{{apiBaseUrl}}` no Typebot com a URL pública
 
 ---

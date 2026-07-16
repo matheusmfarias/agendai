@@ -156,14 +156,42 @@ export async function getTypebotCategories(tenantId: string) {
       services: { some: { isActive: true } },
     },
     orderBy: [{ position: "asc" }, { name: "asc" }],
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      services: {
+        where: { isActive: true },
+        select: {
+          customFields: {
+            where: { isActive: true, isRequired: true },
+            select: { fieldType: true, options: true },
+          },
+        },
+      },
+    },
   });
 
-  return categories.map((category, index) => ({
+  return categories
+    .filter((category) => category.services.some(isTypebotServiceCompatible))
+    .map((category, index) => ({
     number: index + 1,
     id: category.id,
     name: category.name,
-  }));
+    }));
+}
+
+type TypebotCompatibilityField = {
+  fieldType: TypebotCustomField["type"];
+  options: Prisma.JsonValue | null;
+};
+
+function isTypebotServiceCompatible(service: {
+  customFields: TypebotCompatibilityField[];
+}) {
+  return service.customFields.every(
+    (field) =>
+      field.fieldType !== "SELECT" || jsonOptionsToStrings(field.options).length > 0,
+  );
 }
 
 export async function getTypebotServices(
@@ -182,6 +210,12 @@ export async function getTypebotServices(
       services: {
         where: { isActive: true },
         orderBy: [{ position: "asc" }, { name: "asc" }],
+        include: {
+          customFields: {
+            where: { isActive: true, isRequired: true },
+            select: { fieldType: true, options: true },
+          },
+        },
       },
     },
   });
@@ -191,6 +225,7 @@ export async function getTypebotServices(
 
   for (const category of categories) {
     for (const service of category.services) {
+      if (!isTypebotServiceCompatible(service)) continue;
       const priceText = formatTypebotPrice(
         service.priceType,
         service.priceValue?.toString() ?? null,

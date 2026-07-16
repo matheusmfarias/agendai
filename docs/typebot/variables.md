@@ -54,7 +54,7 @@ bubbles visíveis.
 | `selectedSlotLabel` | escolha dinâmica de slot |
 | `currentCustomFieldAnswer` | input correspondente ao tipo da pergunta ativa |
 | `customerName` | text input |
-| `customerPhone` | variável `{{phone}}` do WhatsApp; phone input apenas no Preview |
+| `phone` | injetada pelo Agendaí no WhatsApp; phone input apenas no Preview |
 
 Os IDs correspondentes são obtidos com **Map item with same index**. O cliente
 nunca fornece `tenantId`, `serviceId`, `customerId`, `sessionId` ou

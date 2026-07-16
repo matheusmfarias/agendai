@@ -82,6 +82,86 @@ describe("Typebot production importable blueprint", () => {
     }
   });
 
+  it("has unique identifiers, valid in-group targets and declared variables", () => {
+    const blueprint = loadBlueprint();
+    const blocks = blueprint.groups.flatMap((group) => group.blocks);
+    const variableIds = new Set(blueprint.variables.map((variable) => variable.id));
+    const variableNames = new Set(blueprint.variables.map((variable) => variable.name));
+    const identifiers = [
+      blueprint.groups.map((group) => group.id),
+      blocks.map((block) => block.id),
+      blueprint.edges.map((edge) => edge.id),
+      blueprint.variables.map((variable) => variable.id),
+    ];
+    const blocksByGroup = new Map(
+      blueprint.groups.map((group) => [
+        group.id,
+        new Set(group.blocks.map((block) => block.id)),
+      ]),
+    );
+
+    for (const ids of identifiers) {
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+    for (const edge of blueprint.edges) {
+      if (edge.to.blockId) {
+        expect(blocksByGroup.get(edge.to.groupId)?.has(edge.to.blockId)).toBe(true);
+      }
+    }
+    for (const block of blocks) {
+      if (block.options?.variableId) {
+        expect(variableIds.has(block.options.variableId)).toBe(true);
+      }
+      for (const mapping of block.options?.responseVariableMapping ?? []) {
+        if (mapping.variableId) expect(variableIds.has(mapping.variableId)).toBe(true);
+      }
+    }
+
+    const referencedNames = Array.from(
+      JSON.stringify(blueprint).matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g),
+      (match) => match[1],
+    );
+    for (const name of referencedNames) {
+      expect(variableNames.has(name)).toBe(true);
+    }
+  });
+
+  it("keeps the proven Typebot Webhook response mappings", () => {
+    const blueprint = loadBlueprint();
+    const blocks = new Map(
+      blueprint.groups.flatMap((group) => group.blocks).map((block) => [block.id, block]),
+    );
+    const paths = (blockId: string) =>
+      blocks.get(blockId)?.options?.responseVariableMapping?.map(
+        (mapping) => mapping.bodyPath,
+      ) ?? [];
+
+    expect(paths("b_business")).toContain("data.tenant.name");
+    expect(paths("b_categories")).toContain("data.categories.length");
+    expect(paths("b_services")).toContain("data.services.length");
+    expect(paths("b_available_dates")).toContain("data.dates.flatMap(item => item.date).concat(data.nextStartDate ? [data.nextStartDate] : []).concat(['__BACK_SERVICE__'])");
+    expect(paths("b_periods")).toContain("data.periods.flatMap(item => item.value).concat(['__BACK_DATE__'])");
+    expect(paths("b_slots")).toContain("data.slots.flatMap(item => item.startsAt).concat(['__BACK__'])");
+    expect(paths("b_custom_fields")).toContain("data.fields.map(item => item.type)");
+    expect(paths("b_identify")).toEqual(expect.arrayContaining([
+      "data.lookup.status",
+      "data.lookup.customerName",
+      "data.session.id",
+    ]));
+    expect(paths("b_customer_confirm")).toEqual(expect.arrayContaining([
+      "data.customer.id",
+      "data.customer.name",
+    ]));
+    expect(paths("b_customer_create")).toEqual(expect.arrayContaining([
+      "data.customer.id",
+      "data.customer.name",
+    ]));
+    expect(paths("b_create")).toEqual(expect.arrayContaining([
+      "data.appointment.id",
+      "data.appointment.status",
+    ]));
+  });
+
   it("keeps tenant configuration empty and all API calls parameterized", () => {
     const blueprint = loadBlueprint();
     const serialized = JSON.stringify(blueprint);

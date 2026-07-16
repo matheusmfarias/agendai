@@ -244,7 +244,7 @@ manutenções sensíveis do prestador, incluindo:
 - `TYPEBOT_APPOINTMENT_REJECTED`, tentativa de agendamento Typebot rejeitada
 - `TYPEBOT_CREDENTIAL_CREATED`, geração de credencial Typebot por tenant
 - `TYPEBOT_CREDENTIAL_REVOKED`, revogação de credencial Typebot
-- `TYPEBOT_CREDENTIAL_AUTH_FAILED`, falha de autenticação de credencial Typebot
+- `TYPEBOT_AUTH_FAILED`, falha de autenticação de credencial Typebot
 - `TYPEBOT_RATE_LIMITED`, rate limit excedido nos endpoints Typebot
 - `SUBSCRIPTION_ENFORCEMENT_BLOCKED_MANUAL_APPOINTMENT`, criação manual bloqueada por política de assinatura
 - `SUBSCRIPTION_ENFORCEMENT_BLOCKED_PUBLIC_APPOINTMENT`, agendamento público bloqueado por política de assinatura

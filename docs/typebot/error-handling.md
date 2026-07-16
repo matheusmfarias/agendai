@@ -4,7 +4,7 @@
 > status HTTP e nunca mostra `code` ou `message` ao cliente. Consulte
 > [`flow-blueprint.md`](./flow-blueprint.md).
 
-Como o Typebot deve tratar cada código de erro retornado pela API do AgendaZap (Phase 06).
+Como o Typebot deve tratar cada código de erro retornado pela API do Agendaí.
 
 ---
 

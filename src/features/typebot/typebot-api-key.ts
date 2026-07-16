@@ -3,7 +3,7 @@
  *
  * Supports two modes:
  * 1. Per-tenant credentials (token format: agz_tb_<secret>)
- * 2. Global TYPEBOT_API_KEY fallback (only in dev or when explicitly enabled)
+ * 2. Global TYPEBOT_API_KEY fallback (development only)
  *
  * Tokens are validated against typebot_credentials table by hashing the incoming
  * value and looking up the hash. The full token is never stored.
@@ -93,29 +93,23 @@ async function validateGlobalFallback(
     return { ok: false, code: "UNAUTHORIZED" };
   }
 
-  // Check if fallback is allowed
+  // The global key has no tenant identity, so it is local-development only.
   const isDev = process.env.NODE_ENV === "development";
-  const fallbackEnabled =
-    process.env.TYPEBOT_ALLOW_GLOBAL_KEY_FALLBACK === "true";
-
-  if (!isDev && !fallbackEnabled) {
+  if (!isDev) {
     return { ok: false, code: "UNAUTHORIZED" };
   }
 
-  // In dev, allow if tenant has no own credentials
-  if (isDev) {
-    const count = await prisma.typebotCredential.count({
-      where: {
-        tenant: { slug: tenantSlug },
-        isActive: true,
-        revokedAt: null,
-      },
-    });
+  const count = await prisma.typebotCredential.count({
+    where: {
+      tenant: { slug: tenantSlug },
+      isActive: true,
+      revokedAt: null,
+    },
+  });
 
-    // If tenant has own credentials, global key can't be used for it
-    if (count > 0) {
-      return { ok: false, code: "UNAUTHORIZED" };
-    }
+  // A tenant credential always takes precedence over the development fallback.
+  if (count > 0) {
+    return { ok: false, code: "UNAUTHORIZED" };
   }
 
   // Compare with global key
@@ -139,21 +133,4 @@ function updateLastUsed(credentialId: string): void {
     .catch(() => {
       // best-effort — don't fail the request over lastUsedAt
     });
-}
-
-/** Legacy check — kept for backward compatibility with any non-endpoint usage */
-export function isTypebotApiKeyValid(request: Request): boolean {
-  const header = request.headers.get("x-typebot-api-key");
-  if (!header) return false;
-
-  const globalKey = process.env.TYPEBOT_API_KEY;
-  if (globalKey && header === globalKey) return true;
-
-  // For tenant tokens, we can't validate synchronously — this function
-  // only checks the global key. Endpoints should use validateTypebotAuth.
-  return false;
-}
-
-export function typebotApiKeyConfigured(): boolean {
-  return Boolean(process.env.TYPEBOT_API_KEY);
 }

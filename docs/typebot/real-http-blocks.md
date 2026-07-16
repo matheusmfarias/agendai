@@ -6,7 +6,7 @@
 > [`typebot-api.md`](../technical/typebot-api.md).
 
 Cada bloco HTTP que deve ser configurado no Typebot para chamar a API do
-AgendaZap. Este documento complementa [http-requests.md](./http-requests.md)
+Agendaí. Este documento complementa [http-requests.md](./http-requests.md)
 com o formato prático de configuração no editor do Typebot.
 
 ---
@@ -104,22 +104,32 @@ Headers: x-typebot-api-key: {{typebotApiKey}}
 Body:    JSON
 ```
 
-**Body (JSON):**
+**Body do lookup (JSON):**
 
 ```json
 {
-  "phone": "{{customerPhone}}",
-  "name": "{{customerName}}"
+  "action": "LOOKUP",
+  "phone": "{{phone}}"
 }
 ```
 
-Se `customerEmail` tiver valor, incluir:
+**Confirmação do candidato apresentado:**
 
 ```json
 {
-  "phone": "{{customerPhone}}",
+  "action": "CONFIRM",
+  "sessionId": "{{sessionId}}"
+}
+```
+
+**Criação/reutilização após informar o nome:**
+
+```json
+{
+  "action": "CREATE",
+  "sessionId": "{{sessionId}}",
   "name": "{{customerName}}",
-  "email": "{{customerEmail}}"
+  "rejectedExisting": true
 }
 ```
 
@@ -127,30 +137,35 @@ Se `customerEmail` tiver valor, incluir:
 
 | Caminho da resposta | Variável Typebot |
 |---|---|
-| `customer.id` | `customerId` |
-| `session.id` | `sessionId` |
+| `data.lookup.status` | `customerLookupStatus` |
+| `data.lookup.customerName` | `matchedCustomerName` |
+| `data.session.id` | `sessionId` |
 
-**Resposta de sucesso (200):**
+Os blocos `CONFIRM` e `CREATE` também salvam `data.customer.id` em `customerId`
+e `data.customer.name` em `customerName`. O bloco Webhook do Typebot expõe o
+status como `statusCode` e o JSON da API dentro de `data`.
+
+**Resposta de lookup (200):**
 
 ```json
 {
   "ok": true,
-  "customer": {
-    "id": "customer-uuid",
-    "name": "João Silva",
-    "phone": "55999999999",
-    "email": "joao@email.com"
+  "lookup": {
+    "status": "FOUND",
+    "customerName": "João Silva",
+    "requiresConfirmation": true,
+    "requiresName": false
   },
   "session": {
     "id": "session-uuid",
-    "status": "IDENTIFIED"
+    "status": "STARTED"
   }
 }
 ```
 
 **Erros esperados:**
 
-- `VALIDATION_ERROR` — telefone ou nome inválido. Voltar para captura.
+- `VALIDATION_ERROR` — entrada inválida. Não converter em cliente inexistente.
 - `BUSINESS_UNAVAILABLE` — tenant indisponível.
 
 ---

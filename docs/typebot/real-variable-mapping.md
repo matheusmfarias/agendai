@@ -32,7 +32,7 @@ de produção.
 **Cada prestador tem seu próprio bot e seu próprio token.** Se você atende 3
 prestadores, são 3 bots no Typebot, cada um com seu `tenantSlug` e seu token
 de credencial (`agz_tb_`). O `apiBaseUrl` pode ser igual se todos usam o mesmo
-AgendaZap. O `typebotApiKey` **não** pode ser compartilhado entre tenants.
+Agendaí. O `typebotApiKey` **não** pode ser compartilhado entre tenants.
 
 ---
 
@@ -44,27 +44,26 @@ Criar todas antes de montar os blocos. São preenchidas durante o fluxo.
 
 | Variável | Preenchida por | Descrição |
 |---|---|---|
-| `tenantName` | `GET /business` → `response.tenant.name` | Nome do prestador |
-| `tenantWhatsapp` | `GET /business` → `response.tenant.whatsapp` | WhatsApp do prestador |
-| `tenantCity` | `GET /business` → `response.tenant.city` | Cidade |
-| `tenantState` | `GET /business` → `response.tenant.state` | Estado (UF) |
+| `tenantName` | `GET /business` → `data.tenant.name` | Nome do prestador |
+| `tenantWhatsapp` | `GET /business` → `data.tenant.whatsapp` | WhatsApp do prestador |
 
 ### Identificação do cliente
 
 | Variável | Preenchida por | Descrição |
 |---|---|---|
-| `customerPhone` | Canal WhatsApp (automático) ou input | Telefone com DDD, só dígitos |
+| `phone` | Canal WhatsApp (automático) ou input do Preview | Telefone nacional canônico |
 | `customerName` | Input do cliente | Nome completo |
-| `customerEmail` | Input do cliente (opcional) | E-mail |
-| `customerId` | `POST /identify` → `response.customer.id` | UUID do cliente |
-| `sessionId` | `POST /identify` → `response.session.id` | UUID da sessão |
+| `customerLookupStatus` | `LOOKUP` → `data.lookup.status` | `FOUND`, `NOT_FOUND` ou `AMBIGUOUS` |
+| `matchedCustomerName` | `LOOKUP` → `data.lookup.customerName` | Nome seguro do candidato apresentado |
+| `customerId` | `CONFIRM`/`CREATE` → `data.customer.id` | UUID do cliente |
+| `sessionId` | `LOOKUP` → `data.session.id` | UUID da sessão |
 
 ### Serviços
 
 | Variável | Preenchida por | Descrição |
 |---|---|---|
-| `servicesJson` | `GET /services` → `response.services` | Array completo (JSON) |
-| `servicesText` | `GET /services` → `response.text` | Texto formatado para exibição |
+| `serviceNames`/`serviceIds` | `GET /services` → `data.services` | Opções e IDs na mesma ordem |
+| `servicesText` | `GET /services` → `data.text` | Texto formatado para exibição |
 | `selectedServiceNumber` | Input do cliente (número digitado) | Ex: `"1"` |
 | `selectedServiceId` | Mapeamento lógico | UUID do serviço escolhido |
 | `selectedServiceName` | Mapeamento lógico ou `GET /services/{id}` | Nome do serviço |
@@ -73,17 +72,17 @@ Criar todas antes de montar os blocos. São preenchidas durante o fluxo.
 
 | Variável | Preenchida por | Descrição |
 |---|---|---|
-| `selectedServiceDetailsJson` | `GET /services/{id}` → `response.service` | Objeto completo do serviço |
+| `selectedServiceDetailsJson` | `GET /services/{id}` → `data.service` | Objeto completo do serviço |
 | `customFieldsJson` | `selectedServiceDetailsJson.customFields` | Array de campos ativos |
-| `customFieldsText` | `GET /services/{id}` → `response.customFieldsText` | Texto pronto para exibição |
+| `customFieldsText` | `GET /services/{id}` → `data.customFieldsText` | Texto pronto para exibição |
 | `customValuesJson` | Montado pelo Typebot | Array para o body do POST |
 
 ### Horários
 
 | Variável | Preenchida por | Descrição |
 |---|---|---|
-| `slotsJson` | `GET /slots` → `response.slots` | Array completo (JSON) |
-| `slotsText` | `GET /slots` → `response.text` | Texto formatado para exibição |
+| `slotLabels`/`slotStartsAt` | `GET /slots` → `data.slots` | Opções e instantes na mesma ordem |
+| `slotsText` | `GET /slots` → `data.text` | Texto formatado para exibição |
 | `selectedSlotNumber` | Input do cliente (número digitado) | Ex: `"1"` |
 | `selectedSlotStartsAt` | Mapeamento lógico | ISO 8601 do slot |
 | `selectedSlotLabel` | Mapeamento lógico | Label para exibição |
@@ -93,10 +92,10 @@ Criar todas antes de montar os blocos. São preenchidas durante o fluxo.
 | Variável | Preenchida por | Descrição |
 |---|---|---|
 | `customerNotes` | Input do cliente (opcional) | Observações |
-| `appointmentId` | `POST /appointments` → `response.appointment.id` | UUID do agendamento |
-| `appointmentStatus` | `POST /appointments` → `response.appointment.status` | `CONFIRMED`/`REQUESTED`/`WAITING_INFO` |
-| `appointmentMessage` | `POST /appointments` → `response.message` | Mensagem pronta para o cliente |
-| `appointmentJson` | `GET /appointments/{id}` → `response.appointment` | Dados completos (consulta) |
+| `appointmentId` | `POST /appointments` → `data.appointment.id` | UUID do agendamento |
+| `appointmentStatus` | `POST /appointments` → `data.appointment.status` | `CONFIRMED`/`REQUESTED`/`WAITING_INFO` |
+| `appointmentMessage` | `POST /appointments` → `data.message` | Mensagem pronta para o cliente |
+| `appointment` | `GET /appointments/{id}` → `data.appointment` | Dados completos (consulta) |
 
 ### Controle de erro
 
@@ -211,8 +210,8 @@ problemático. A validação final sempre é do backend.
 1. **`tenantSlug` é fixo por bot** — cada prestador tem seu próprio bot Typebot
 2. **`typebotApiKey` é o token da credencial do tenant** — gerado no painel admin,
    prefixo `agz_tb_`, exibido apenas uma vez. Nunca é exibido em mensagem.
-3. **`customerPhone` deve vir do WhatsApp** sempre que o canal fornecer
-   automaticamente
+3. **`phone` é injetada no `startChat` pelo Agendaí**; o blueprint não deve
+   sobrescrevê-la
 4. **`selectedServiceId` vem da lista retornada pela API** — nunca digitado
    manualmente pelo cliente
 5. **`selectedSlotStartsAt` vem da lista de slots retornada pela API** — usar o

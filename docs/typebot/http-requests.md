@@ -1,6 +1,6 @@
 # Chamadas HTTP do Typebot
 
-Cada chamada REST que o Typebot deve fazer ao AgendaZap durante o fluxo conversacional.
+Cada chamada REST que o Typebot deve fazer ao Agendaí durante o fluxo conversacional.
 
 **Pré-requisito:** variáveis `apiBaseUrl`, `tenantSlug` e `typebotApiKey` configuradas. Ver [variables.md](./variables.md).
 
@@ -61,44 +61,53 @@ x-typebot-api-key: {{typebotApiKey}}
 
 ## 2. Identificar cliente
 
-Cria ou reutiliza um cliente pelo telefone. Também cria/atualiza a sessão Typebot.
+A identificação é deliberadamente dividida em lookup, confirmação e criação.
+Conhecer o telefone não autoriza vincular um cadastro sem a confirmação do cliente.
 
 ```http
 POST {{apiBaseUrl}}/api/typebot/{{tenantSlug}}/customers/identify
 x-typebot-api-key: {{typebotApiKey}}
 Content-Type: application/json; charset=utf-8
 
+{ "action": "LOOKUP", "phone": "{{phone}}" }
+```
+
+O lookup retorna `lookup.status` (`FOUND`, `NOT_FOUND` ou `AMBIGUOUS`) e
+`session.id`. Para confirmar o único candidato apresentado:
+
+```json
+{ "action": "CONFIRM", "sessionId": "{{sessionId}}" }
+```
+
+Quando não houver candidato ou o cliente escolher “Não sou eu”:
+
+```json
 {
-  "phone": "{{customerPhone}}",
+  "action": "CREATE",
+  "sessionId": "{{sessionId}}",
   "name": "{{customerName}}",
-  "email": "{{customerEmail}}"
+  "rejectedExisting": true
 }
 ```
 
-**Quando chamar:** após capturar nome e telefone do cliente.
+`rejectedExisting` é obrigatório no caminho que rejeita um cadastro apresentado.
+A API reutiliza um cadastro de mesmo telefone e nome quando a correspondência é
+inequívoca; não mescla registros ambíguos.
 
-**Body:**
-
-| Campo | Obrigatório | Descrição |
-|---|---|---|
-| `phone` | Sim | Telefone com DDD, somente dígitos |
-| `name` | Sim | Nome do cliente (mín. 2 caracteres) |
-| `email` | Não | E-mail do cliente. Se não informado, omitir ou enviar `""`. |
-
-**Resposta esperada (200):**
+**Resposta do LOOKUP (200):**
 
 ```json
 {
   "ok": true,
-  "customer": {
-    "id": "customer-uuid",
-    "name": "João Silva",
-    "phone": "55999999999",
-    "email": "joao@email.com"
+  "lookup": {
+    "status": "FOUND",
+    "customerName": "João Silva",
+    "requiresConfirmation": true,
+    "requiresName": false
   },
   "session": {
     "id": "session-uuid",
-    "status": "IDENTIFIED"
+    "status": "STARTED"
   }
 }
 ```
@@ -107,10 +116,12 @@ Content-Type: application/json; charset=utf-8
 
 | Campo da resposta | Variável Typebot |
 |---|---|
-| `customer.id` | `customerId` |
+| `lookup.status` | `customerLookupStatus` |
+| `lookup.customerName` | `matchedCustomerName` |
 | `session.id` | `sessionId` |
 
-**Erros comuns:** `VALIDATION_ERROR` (telefone/nome inválido ou encoding incorreto).
+`CONFIRM` e `CREATE` retornam `customer.id`, `customer.name` e `session.id`.
+Erros de validação não devem ser tratados como `NOT_FOUND`.
 
 ---
 
@@ -362,7 +373,7 @@ Você pode tentar outro serviço ou falar com o atendimento.
 
 ## 5. Criar agendamento
 
-Cria o agendamento no AgendaZap com todas as validações de negócio.
+Cria o agendamento no Agendaí com todas as validações de negócio.
 
 ```http
 POST {{apiBaseUrl}}/api/typebot/{{tenantSlug}}/appointments

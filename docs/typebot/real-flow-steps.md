@@ -133,60 +133,19 @@ Digite uma opção:
 
 ---
 
-### 6. Captura de telefone (se o canal não fornecer)
+### 6–9. Telefone e identificação segura
 
-Tipo: **Set variable** ou **Input**
+No canal WhatsApp, `phone` já é injetada pelo Agendaí no `startChat`. No Preview,
+se ela estiver vazia, o fluxo abre diretamente o input de telefone.
 
-Se o canal WhatsApp fornecer o número automaticamente:
+O bloco HTTP executa primeiro `LOOKUP`. Um resultado `FOUND` apresenta o nome e
+exige `CONFIRM`; `NOT_FOUND` pede diretamente o nome e executa `CREATE` com o
+`sessionId`. Ao escolher “Não sou eu”, o mesmo `CREATE` recebe
+`rejectedExisting: true`. `AMBIGUOUS` residual falha de forma segura e não cria
+outro cadastro arbitrariamente.
 
-```
-customerPhone = {{phone}}   (variável de sistema do canal WhatsApp)
-```
-
-Se não fornecer, usar bloco **Input**:
-
-```
-Pergunta: "Qual o seu telefone com DDD?"
-           "Exemplo: 55999999999"
-Salvar em: customerPhone
-```
-
----
-
-### 7. Input — Nome
-
-Tipo: **Input**
-
-```
-Pergunta: "Para começar, qual o seu nome?"
-Salvar em: customerName
-```
-
----
-
-### 8. Input — E-mail
-
-Tipo: **Input** (opcional, pode pular)
-
-```
-Pergunta: "Se quiser, pode me informar seu e-mail para confirmarmos o agendamento."
-           "Ou digite *pular* para continuar sem e-mail."
-Salvar em: customerEmail
-```
-
-Se o cliente digitar "pular", deixar `customerEmail` vazio.
-
----
-
-### 9. HTTP — Identify
-
-Tipo: **HTTP**
-
-Configuração em [real-http-blocks.md](./real-http-blocks.md) — bloco 2.
-
-**Branch sucesso** → Bloco 10 (HTTP - Services)
-
-**Branch erro** → Tratamento (`VALIDATION_ERROR`: voltar para nome/telefone)
+Configuração em [real-http-blocks.md](./real-http-blocks.md) — bloco 2. O
+blueprint importável é a fonte de verdade para os grupos e edges atuais.
 
 ---
 

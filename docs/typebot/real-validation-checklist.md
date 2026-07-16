@@ -11,7 +11,7 @@ cada item e marque como concluído.
 
 ## Pré-validação no Simulador
 
-Antes de testar no Typebot, valide o fluxo no simulador interno do AgendaZap:
+Antes de testar no Typebot, valide o fluxo no simulador interno do Agendaí:
 
 - [ ] Acessar `/admin/typebot-simulator` como Super Admin
 - [ ] Selecionar o mesmo tenant que será usado no Typebot real

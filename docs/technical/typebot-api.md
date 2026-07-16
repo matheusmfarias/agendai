@@ -6,7 +6,7 @@ API pública REST que permite ao Typebot orquestrar o fluxo conversacional de ag
 
 `POST /api/typebot/:tenantSlug/customers/identify` opera em três fases:
 
-- `{"action":"LOOKUP","phone":"{{customerPhone}}"}` normaliza o telefone,
+- `{"action":"LOOKUP","phone":"{{phone}}"}` normaliza o telefone,
   procura somente no tenant resolvido pelo slug e cria ou reutiliza a sessão;
 - `{"action":"CONFIRM","sessionId":"..."}` vincula à sessão apenas o único
   cadastro apresentado pelo lookup;
@@ -31,6 +31,12 @@ com pelo menos um serviço ativo. Em seguida,
 `GET /api/typebot/:tenantSlug/services?categoryId=UUID` retorna somente os
 serviços ativos daquela categoria e tenant.
 
+Os seis tipos de campos personalizados do link público são suportados pelo
+blueprint (`TEXT`, `TEXTAREA`, `NUMBER`, `DATE`, `BOOLEAN` e `SELECT`). Um serviço
+com `SELECT` obrigatório sem nenhuma opção válida não é oferecido no Typebot,
+pois o cliente não conseguiria concluir a resposta. O serviço continua disponível
+no link público conforme as regras próprias dessa superfície.
+
 “Falar com atendente” é terminal: define `handoffRequested` e informa que o
 estabelecimento continuará no mesmo canal. Não cria agendamento. No canal Evolution,
 o gateway persiste a pausa somente para a conversa `tenant + WhatsApp + telefone`.
@@ -42,9 +48,8 @@ local, limpa as opções pendentes e permite que qualquer mensagem posterior ini
 uma nova sessão. Sessões automáticas sem atividade por 30 minutos também são
 encerradas antes de um novo `startChat`.
 
-No canal WhatsApp, `customerPhone` deve receber a variável de sistema `{{phone}}`
-antes do grupo de identificação. O input de telefone permanece apenas como
-fallback do Preview web.
+No canal WhatsApp, `phone` é injetada pelo Agendaí no `startChat`. O input de
+telefone permanece apenas como fallback do Preview web.
 
 ## Turnos disponíveis
 
@@ -88,7 +93,7 @@ ter múltiplas credenciais ativas, e cada credencial gera um token único.
 
 ### Token de credencial (prefixo `agz_tb_`)
 
-Tokens gerados pelo AgendaZap têm o formato:
+Tokens gerados pelo Agendaí têm o formato:
 
 ```
 agz_tb_<base64url aleatório>
@@ -427,26 +432,22 @@ GET /api/typebot/[tenantSlug]/services/[serviceId]/slots?date=2026-06-29&days=7
 
 ### 6. Identificar cliente
 
-Cria ou reutiliza um cliente a partir do telefone informado no WhatsApp. Também cria/atualiza a `typebot_session`.
+Executa o contrato de identificação segura descrito no início deste documento.
+O telefone inicia apenas um lookup; confirmação e criação exigem a sessão emitida.
 
 ```http
 POST /api/typebot/[tenantSlug]/customers/identify
 Content-Type: application/json
 
-{
-  "phone": "55999999999",
-  "name": "João Silva",
-  "email": "joao@email.com"
-}
+{ "action": "LOOKUP", "phone": "11999999999" }
 ```
 
 **Regras:**
-- Telefone obrigatório
-- Nome obrigatório (mín. 2 caracteres)
-- E-mail opcional
-- Busca cliente existente por `tenant_id + phone`
-- Se existe: atualiza nome/e-mail
-- Se não existe: cria novo
+- `LOOKUP` normaliza o telefone e retorna `lookup.status` e `session.id`
+- `CONFIRM` recebe somente `action` e `sessionId`
+- `CREATE` recebe `action`, `sessionId`, `name`, e `rejectedExisting`
+- Não atualiza silenciosamente nome/e-mail de cadastro existente
+- Toda sessão e todo cliente são filtrados pelo tenant autenticado
 - **Não cria usuário CUSTOMER** (apenas customer)
 
 **Resposta de sucesso (200):**
@@ -454,16 +455,29 @@ Content-Type: application/json
 ```json
 {
   "ok": true,
-  "customer": {
-    "id": "customer-uuid",
-    "name": "João Silva",
-    "phone": "55999999999",
-    "email": "joao@email.com"
+  "lookup": {
+    "status": "FOUND",
+    "customerName": "João Silva",
+    "requiresConfirmation": true,
+    "requiresName": false
   },
   "session": {
     "id": "session-uuid",
-    "status": "IDENTIFIED"
+    "status": "STARTED"
   }
+}
+```
+
+```json
+{ "action": "CONFIRM", "sessionId": "session-uuid" }
+```
+
+```json
+{
+  "action": "CREATE",
+  "sessionId": "session-uuid",
+  "name": "João Silva",
+  "rejectedExisting": true
 }
 ```
 
@@ -682,10 +696,9 @@ Status possíveis: **READY** (pronto), **WARNING** (atenção), **BLOCKED** (blo
 - Credenciais revogadas (`isActive = false`) são rejeitadas
 - O motivo de falha de autenticação nunca é revelado — a resposta é sempre `UNAUTHORIZED` genérico
 - `lastUsedAt` da credencial é atualizado a cada uso bem-sucedido
-- Falhas de autenticação geram auditoria (`TYPEBOT_CREDENTIAL_AUTH_FAILED`)
+- Falhas de autenticação geram auditoria (`TYPEBOT_AUTH_FAILED`)
 - Criação e revogação de credenciais geram auditoria (`TYPEBOT_CREDENTIAL_CREATED`, `TYPEBOT_CREDENTIAL_REVOKED`)
 - Rate limit excedido gera auditoria (`TYPEBOT_RATE_LIMITED`)
-- Falhas de autenticação geram auditoria (`TYPEBOT_AUTH_FAILED`)
 - Agendamento Typebot bloqueado por política de assinatura gera auditoria (`SUBSCRIPTION_ENFORCEMENT_BLOCKED_TYPEBOT_APPOINTMENT`)
 - Auditoria operacional nunca inclui token, hash, headers ou cookies
 - Validação defensiva contra mojibake: campos textuais (`name`, `email`, `customerNotes`, `customValues[].value`) são rejeitados com `VALIDATION_ERROR` se contiverem o caractere de substituição Unicode `U+FFFD` (`�`), indicando que o cliente enviou encoding incorreto
@@ -741,7 +754,13 @@ curl -H "x-typebot-api-key: agz_tb_SEU_TOKEN_AQUI" \
 curl -X POST http://localhost:3000/api/typebot/seu-slug/customers/identify \
   -H "Content-Type: application/json; charset=utf-8" \
   -H "x-typebot-api-key: agz_tb_SEU_TOKEN_AQUI" \
-  -d '{"phone":"55999999999","name":"João Silva"}'
+  -d '{"action":"LOOKUP","phone":"11999999999"}'
+
+# 4b. Confirmar o candidato FOUND (ou use CREATE conforme o contrato acima)
+curl -X POST http://localhost:3000/api/typebot/seu-slug/customers/identify \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -H "x-typebot-api-key: agz_tb_SEU_TOKEN_AQUI" \
+  -d '{"action":"CONFIRM","sessionId":"SESSION_ID"}'
 
 # 5. Create appointment
 curl -X POST http://localhost:3000/api/typebot/seu-slug/appointments \
@@ -764,7 +783,7 @@ Invoke-RestMethod -Uri http://localhost:3000/api/typebot/seu-slug/business
 
 # POST com corpo UTF-8 — usar -ContentType explicitamente e
 # passar o corpo como bytes UTF-8
-$body = '{"phone":"55999999999","name":"João Silva"}'
+$body = '{"action":"LOOKUP","phone":"11999999999"}'
 $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 Invoke-RestMethod -Uri http://localhost:3000/api/typebot/seu-slug/customers/identify `
   -Method Post `
@@ -784,7 +803,7 @@ Invoke-RestMethod -Uri http://localhost:3000/api/typebot/seu-slug/appointments `
 
 ```powershell
 # Criar arquivo JSON com encoding UTF-8 explícito
-$body = @{ phone = "55999999999"; name = "João Silva" } | ConvertTo-Json
+$body = @{ action = "LOOKUP"; phone = "11999999999" } | ConvertTo-Json
 $body | Out-File -FilePath tmp-body.json -Encoding utf8
 
 # Enviar o arquivo como corpo
